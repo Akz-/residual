@@ -61,6 +61,7 @@ public:
 	void load(TextSplitter &ts);
 	void loadBinary(Common::MemoryReadStream *ms);
 	void setVisible(bool visible);
+	void draw();
 
 	const char *getName() const { return _name.c_str(); }
 	int getSectorId() const { return _id; }
