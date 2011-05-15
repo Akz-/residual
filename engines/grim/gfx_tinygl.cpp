@@ -537,14 +537,16 @@ void GfxTinyGL::drawHierachyNode(const Model::HierNode *node) {
 		tglPushMatrix();
 		tglTranslatef(node->_pivot.x(), node->_pivot.y(), node->_pivot.z());
 
-		Sprite* sprite = node->_sprite;
-		while (sprite) {
-			sprite->draw();
-			sprite = sprite->_next;
-		}
+		if (!_currentShadowArray) {
+			Sprite* sprite = node->_sprite;
+			while (sprite) {
+				sprite->draw();
+				sprite = sprite->_next;
+			}
 
-		if (node->_mesh && node->_meshVisible) {
-			node->_mesh->draw();
+			if (node->_mesh && node->_meshVisible) {
+				node->_mesh->draw();
+			}
 		}
 
 		tglMatrixMode(TGL_MODELVIEW);
