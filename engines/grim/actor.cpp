@@ -532,7 +532,7 @@ void Actor::walkTo(const Graphics::Vector3d &p) {
 			Common::List<Sector *> sectors;
 			for (int i = 0; i < g_grim->getCurrScene()->getSectorCount(); ++i) {
 				Sector *s = g_grim->getCurrScene()->getSectorBase(i);
-				if (s->getType() >= Sector::WalkType && s->isVisible()) {
+				if ((s->getType() == Sector::WalkType || s->getType() == Sector::HotType) && s->isVisible()) {
 					sectors.push_back(s);
 				}
 			}
@@ -581,6 +581,24 @@ void Actor::walkTo(const Graphics::Vector3d &p) {
 					if (bridges.empty())
 						continue; // The sectors are not adjacent.
 
+					Graphics::Vector3d closestPoint = s->getClosestPoint(_destPos);
+					Graphics::Vector3d best;
+					float bestDist = 1e6f;
+					Graphics::Line3d l(node->pos, closestPoint);
+					while (!bridges.empty()) {
+						Graphics::Line3d bridge = bridges.back();
+						Graphics::Vector3d pos;
+						if (!bridge.intersectLine2d(l, &pos)) {
+							pos = bridge.middle();
+						}
+						float dist = (pos - closestPoint).magnitude();
+						if (dist < bestDist) {
+							bestDist = dist;
+							best = pos;
+						}
+						bridges.pop_back();
+					}
+
 					PathNode *n = NULL;
 					for (Common::List<PathNode *>::iterator j = openList.begin(); j != openList.end(); ++j) {
 						if ((*j)->sect == s) {
@@ -589,30 +607,14 @@ void Actor::walkTo(const Graphics::Vector3d &p) {
 						}
 					}
 					if (n) {
-						float newCost = node->cost + (n->pos - node->pos).magnitude();
+						float newCost = node->cost + (best - node->pos).magnitude();
 						if (newCost < n->cost) {
 							n->cost = newCost;
 							n->parent = node;
+							n->pos = best;
+							n->dist = (n->pos - _destPos).magnitude();
 						}
 					} else {
-						Graphics::Vector3d closestPoint = s->getClosestPoint(_destPos);
-						Graphics::Vector3d best;
-						float bestDist = 1e6f;
-						Graphics::Line3d l(node->pos, closestPoint);
-						while (!bridges.empty()) {
-							Graphics::Line3d bridge = bridges.back();
-							Graphics::Vector3d pos;
-							if (!bridge.intersectLine2d(l, &pos)) {
-								pos = bridge.middle();
-							}
-							float dist = (pos - closestPoint).magnitude();
-							if (dist < bestDist) {
-								bestDist = dist;
-								best = pos;
-							}
-							bridges.pop_back();
-						}
-
 						n = new PathNode;
 						n->parent = node;
 						n->sect = s;
@@ -910,7 +912,7 @@ void Actor::sayLine(const char *msg, const char *msgId) {
 		_sayLineText = NULL;
 	}
 
-	if (!g_grim->_sayLineDefaults.font)
+	if (!g_grim->_sayLineDefaults.getFont())
 		return;
 
 	_sayLineText = new TextObject(false, true);
