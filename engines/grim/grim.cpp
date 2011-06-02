@@ -469,6 +469,8 @@ Common::Error GrimEngine::run() {
 	g_imuse = new Imuse(20);
 
 	bool fullscreen = (tolower(g_registry->get("fullscreen", "false")[0]) == 't');
+	int width = atoi(g_registry->get("screen_width", "640"));
+	int height = atoi(g_registry->get("screen_height", "480"));
 
 	if (!_softRenderer && !g_system->hasFeature(OSystem::kFeatureOpenGL)){
 		warning("gfx backend doesn't support hardware rendering");
@@ -482,7 +484,7 @@ Common::Error GrimEngine::run() {
 		g_driver = CreateGfxOpenGL();
 #endif
 
-	g_driver->setupScreen(640, 480, fullscreen);
+	g_driver->setupScreen(width, height, fullscreen);
 
 	BitmapPtr splash_bm;
 	if (!(_gameFlags & ADGF_DEMO) && getGameType() == GType_GRIM)

@@ -119,6 +119,9 @@ public:
 	virtual void restoreState(SaveGame *state);
 
 protected:
+	inline int toScreenX(int x) { return (x * _screenWidth / 640); }
+	inline int toScreenY(int y) { return (y * _screenHeight / 480); }
+
 	int _screenWidth, _screenHeight, _screenBPP;
 	bool _isFullscreen;
 	Shadow *_currentShadowArray;

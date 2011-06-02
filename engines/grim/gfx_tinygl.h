@@ -106,6 +106,7 @@ private:
 	byte *_smushBitmap;
 	int _smushWidth;
 	int _smushHeight;
+	bool _smushAllocated;
 	byte *_storedDisplay;
 };
 

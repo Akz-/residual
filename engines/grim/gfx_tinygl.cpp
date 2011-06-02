@@ -35,6 +35,9 @@
 
 namespace Grim {
 
+#define toScreenX(x) ((x) * _screenWidth / 640)
+#define toScreenY(y) ((y) * _screenHeight / 480)
+
 GfxBase *CreateGfxTinyGL() {
 	return new GfxTinyGL();
 }
@@ -143,6 +146,7 @@ GfxTinyGL::GfxTinyGL() {
 	g_driver = this;
 	_zb = NULL;
 	_storedDisplay = NULL;
+	_smushAllocated = false;
 }
 
 GfxTinyGL::~GfxTinyGL() {
@@ -166,8 +170,8 @@ byte *GfxTinyGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 	_zb = TinyGL::ZB_open(screenW, screenH, ZB_MODE_5R6G5B, buffer);
 	TinyGL::glInit(_zb);
 
-	_storedDisplay = new byte[640 * 480 * 2];
-	memset(_storedDisplay, 0, 640 * 480 * 2);
+	_storedDisplay = new byte[_screenWidth * _screenHeight * 2];
+	memset(_storedDisplay, 0, _screenWidth * _screenHeight * 2);
 
 	_currentShadowArray = NULL;
 
@@ -204,9 +208,9 @@ void GfxTinyGL::positionCamera(Graphics::Vector3d pos, Graphics::Vector3d intere
 }
 
 void GfxTinyGL::clearScreen() {
-	memset(_zb->pbuf, 0, 640 * 480 * 2);
-	memset(_zb->zbuf, 0, 640 * 480 * 2);
-	memset(_zb->zbuf2, 0, 640 * 480 * 4);
+	memset(_zb->pbuf, 0, _screenWidth * _screenHeight * 2);
+	memset(_zb->zbuf, 0, _screenWidth * _screenHeight * 2);
+	memset(_zb->zbuf2, 0, _screenWidth * _screenHeight * 4);
 }
 
 void GfxTinyGL::flipBuffer() {
@@ -287,11 +291,10 @@ void GfxTinyGL::getBoundingBoxPos(const Model::Mesh *model, int *x1, int *y1, in
 
 		for (int j = 0; j < model->_faces[i]._numVertices; j++) {
 			TGLfloat modelView[16], projection[16];
-			TGLint viewPort[4];
+			TGLint viewPort[4] = {0, 0, 640, 480};
 
 			tglGetFloatv(TGL_MODELVIEW_MATRIX, modelView);
 			tglGetFloatv(TGL_PROJECTION_MATRIX, projection);
-			tglGetIntegerv(TGL_VIEWPORT, viewPort);
 
 			pVertices = model->_vertices + 3 * model->_faces[i]._vertices[j];
 
@@ -611,6 +614,25 @@ void GfxTinyGL::setupLight(Scene::Light *light, int lightId) {
 	tglEnable(TGL_LIGHT0 + lightId);
 }
 
+void resizeNearest(uint16 *src, uint16 *dst, int srcWidth, int srcHeight, int dstWidth, int dstHeight) {
+	int xStep = (srcWidth << 16) / dstWidth;
+	int yStep = (srcHeight << 16) / dstHeight;
+	int xf = 0;
+	int yf = 0;
+	int yPos = 0;
+	for (int y = 0; y < dstHeight; y++) {
+		for (int x = 0; x < dstWidth; x++) {
+			uint16 pixel = READ_UINT16(src + yPos + (xf >> 16));
+			WRITE_UINT16(dst, pixel);
+			xf += xStep;
+			++dst;
+		}
+		yf += yStep;
+		xf = 0;
+		yPos = (yf >> 16) * srcWidth;
+	}
+}
+
 void GfxTinyGL::createBitmap(BitmapData *bitmap) {
 	// We want an RGB565-bitmap in TinyGL.
 	if (bitmap->_colorFormat != BM_RGB565) {
@@ -625,15 +647,33 @@ void GfxTinyGL::createBitmap(BitmapData *bitmap) {
 			}
 		}
 	}
+
+	// If not using the default resolution of 640x480, resize the bitmap to
+	// match whatever screen resolution we're using.
+	if (_screenWidth != 640 || _screenHeight != 480) {
+		int newWidth = toScreenX(bitmap->_width);
+		int newHeight = toScreenY(bitmap->_height);
+		bitmap->_numTex = bitmap->_numImages;
+		bitmap->_texIds = new uint16*[bitmap->_numImages];
+		uint16 **textures = (uint16 **)bitmap->_texIds;
+		for (int pic = 0; pic < bitmap->_numImages; pic++) {
+			textures[pic] = new uint16[newWidth * newHeight];
+			uint16 *src = reinterpret_cast<uint16 *>(bitmap->getImageData(pic));
+			uint16 *dst = textures[pic];
+			resizeNearest(src, dst, bitmap->_width, bitmap->_height, newWidth, newHeight);
+		}
+	} else {
+		bitmap->_numTex = 0;
+	}
 }
 
-void TinyGLBlit(byte *dst, byte *src, int x, int y, int width, int height, bool trans) {
+void TinyGLBlit(byte *dst, byte *src, int x, int y, int width, int height,
+		int screenWidth, int screenHeight, int dstPitch, bool trans) {
 	int srcPitch = width * 2;
-	int dstPitch = 640 * 2;
 	int srcX, srcY;
 	int l, r;
 
-	if (x > 639 || y > 479)
+	if (x >= screenWidth || y >= screenHeight)
 		return;
 
 	if (x < 0) {
@@ -649,13 +689,13 @@ void TinyGLBlit(byte *dst, byte *src, int x, int y, int width, int height, bool 
 		srcY = 0;
 	}
 
-	if (x + width > 640)
-		width -= (x + width) - 640;
+	if (x + width > screenWidth)
+		width = x - screenWidth;
 
-	if (y + height > 480)
-		height -= (y + height) - 480;
+	if (y + height > screenHeight)
+		height = y - screenHeight;
 
-	dst += (x + (y * 640)) * 2;
+	dst += (x * 2 + (y * dstPitch));
 	src += (srcX + (srcY * width)) * 2;
 
 	int copyWidth = width * 2;
@@ -681,15 +721,36 @@ void TinyGLBlit(byte *dst, byte *src, int x, int y, int width, int height, bool 
 
 void GfxTinyGL::drawBitmap(const Bitmap *bitmap) {
 	assert(bitmap->getCurrentImage() > 0);
-	if (bitmap->getFormat() == 1)
-		TinyGLBlit((byte *)_zb->pbuf, (byte *)bitmap->getData(bitmap->getCurrentImage() - 1),
-			bitmap->getX(), bitmap->getY(), bitmap->getWidth(), bitmap->getHeight(), true);
-	else
-		TinyGLBlit((byte *)_zb->zbuf, (byte *)bitmap->getData(bitmap->getCurrentImage() - 1),
-			bitmap->getX(), bitmap->getY(), bitmap->getWidth(), bitmap->getHeight(), false);
+	if (bitmap->getNumTex() == 0) {
+		if (bitmap->getFormat() == 1)
+			TinyGLBlit((byte *)_zb->pbuf, (byte *)bitmap->getData(bitmap->getCurrentImage() - 1),
+				bitmap->getX(), bitmap->getY(), bitmap->getWidth(), bitmap->getHeight(), _screenWidth, _screenHeight, _zb->linesize, true);
+		else
+			TinyGLBlit((byte *)_zb->zbuf, (byte *)bitmap->getData(bitmap->getCurrentImage() - 1),
+				bitmap->getX(), bitmap->getY(), bitmap->getWidth(), bitmap->getHeight(), _screenWidth, _screenHeight, _zb->xsize * 2, false);
+	} else {
+		uint16 **textures = (uint16 **)bitmap->getTexIds();
+		int x = toScreenX(bitmap->getX());
+		int y = toScreenY(bitmap->getY());
+		int width = toScreenX(bitmap->getWidth());
+		int height = toScreenY(bitmap->getHeight());
+		if (bitmap->getFormat() == 1)
+			TinyGLBlit((byte *)_zb->pbuf, (byte *)textures[bitmap->getCurrentImage() - 1],
+				x, y, width, height, _screenWidth, _screenHeight, _zb->linesize, true);
+		else
+			TinyGLBlit((byte *)_zb->zbuf, (byte *)textures[bitmap->getCurrentImage() - 1],
+				x, y, width, height, _screenWidth, _screenHeight, _zb->xsize * 2, false);
+	}
 }
 
-void GfxTinyGL::destroyBitmap(BitmapData *) { }
+void GfxTinyGL::destroyBitmap(BitmapData *bitmap) {
+	if (bitmap->_numTex > 0) {
+		uint16 **textures = (uint16 **)bitmap->_texIds;
+		for (int i = 0; i < bitmap->_numTex; i++)
+			delete[] textures[i];
+		delete[] textures;
+	}
+}
 
 void GfxTinyGL::createMaterial(Material *material, const char *data, const CMap *cmap) {
 	material->_textures = new TGLuint[material->_numImages];
@@ -739,26 +800,45 @@ void GfxTinyGL::destroyMaterial(Material *material) {
 }
 
 void GfxTinyGL::prepareSmushFrame(int width, int height, byte *bitmap) {
-	_smushWidth = width;
-	_smushHeight = height;
-	_smushBitmap = bitmap;
+	if (_screenWidth != 640 || _screenHeight != 480) {
+		_smushAllocated = true;
+		int newWidth = toScreenX(width);
+		int newHeight = toScreenY(height);
+		_smushBitmap = new byte[newWidth * newHeight * 2];
+		_smushWidth = newWidth;
+		_smushHeight = newHeight;
+		resizeNearest((uint16 *)bitmap, (uint16 *)_smushBitmap, width, height, newWidth, newHeight);
+	} else {
+		_smushAllocated = false;
+		_smushWidth = width;
+		_smushHeight = height;
+		_smushBitmap = bitmap;
+	}
 }
 
 void GfxTinyGL::drawSmushFrame(int offsetX, int offsetY) {
-	if (_smushWidth == 640 && _smushHeight == 480) {
-		memcpy(_zb->pbuf, _smushBitmap, 640 * 480 * 2);
+	offsetX = toScreenX(offsetX);
+	offsetY = toScreenY(offsetY);
+	if (_smushWidth == _screenWidth && _smushHeight == _screenHeight) {
+		memcpy(_zb->pbuf, _smushBitmap, _screenWidth * _screenHeight * 2);
 	} else {
-		TinyGLBlit((byte *)_zb->pbuf, _smushBitmap, offsetX, offsetY, _smushWidth, _smushHeight, false);
+		TinyGLBlit((byte *)_zb->pbuf, _smushBitmap, offsetX, offsetY, _smushWidth, _smushHeight, _screenWidth, _screenHeight, _zb->linesize, false);
 	}
 }
 
 void GfxTinyGL::releaseSmushFrame() {
+	if (_smushAllocated) {
+		delete _smushBitmap;
+		_smushAllocated = false;
+	}
 }
 
 void GfxTinyGL::loadEmergFont() {
 }
 
 void GfxTinyGL::drawEmergString(int x, int y, const char *text, const Color &fgColor) {
+	x = toScreenX(x);
+	y = toScreenY(y);
 	uint16 color = ((fgColor.getRed() & 0xF8) << 8) | ((fgColor.getGreen() & 0xFC) << 3) | (fgColor.getBlue() >> 3);
 
 	for (int l = 0; l < (int)strlen(text); l++) {
@@ -766,14 +846,14 @@ void GfxTinyGL::drawEmergString(int x, int y, const char *text, const Color &fgC
 		assert(c >= 32 && c <= 127);
 		const uint8 *ptr = Font::emerFont[c - 32];
 		for (int py = 0; py < 13; py++) {
-			if ((py + y) < 480 && (py + y) >= 0) {
+			if ((py + y) < _screenHeight && (py + y) >= 0) {
 				int line = ptr[12 - py];
 				for (int px = 0; px < 8; px++) {
-					if ((px + x) < 640 && (px + x) >= 0) {
+					if ((px + x) < _screenWidth && (px + x) >= 0) {
 						int pixel = line & 0x80;
 						line <<= 1;
 						if (pixel)
-							WRITE_UINT16(_zb->pbuf + ((py + y) * 640) + (px + x), color);
+							WRITE_UINT16(_zb->pbuf + ((py + y) * _zb->linesize / 2) + (px + x), color);
 					}
 				}
 			}
@@ -812,11 +892,25 @@ GfxBase::TextObjectHandle *GfxTinyGL::createTextBitmap(uint8 *data, int width, i
 		}
 	}
 
+	// If not using the default resolution of 640x480, resize the bitmap to
+	// match whatever screen resolution we're using.
+	if (_screenWidth != 640 || _screenHeight != 480) {
+		int newWidth = toScreenX(width);
+		int newHeight = toScreenY(height);
+		handle->bitmapData = new uint16[newWidth * newHeight];
+		resizeNearest(texData, handle->bitmapData, width, height, newWidth, newHeight);
+		delete[] texData;
+	}
+
 	return handle;
 }
 
 void GfxTinyGL::drawTextBitmap(int x, int y, TextObjectHandle *handle) {
-	TinyGLBlit((byte *)_zb->pbuf, (byte *)handle->bitmapData, x, y, handle->width, handle->height, true);
+	x = toScreenX(x);
+	y = toScreenY(y);
+	int width = toScreenX(handle->width);
+	int height = toScreenY(handle->height);
+	TinyGLBlit((byte *)_zb->pbuf, (byte *)handle->bitmapData, x, y, width, height, _screenWidth, _screenHeight, _zb->linesize, true);
 }
 
 void GfxTinyGL::destroyTextBitmap(TextObjectHandle *handle) {
@@ -829,9 +923,9 @@ Bitmap *GfxTinyGL::getScreenshot(int w, int h) {
 	assert(buffer);
 
 	int step = 0;
-	for (int y = 0; y <= 479; y++) {
-		for (int x = 0; x <= 639; x++) {
-			uint16 pixel = *(src + y * 640 + x);
+	for (int y = 0; y <= _screenHeight - 1; y++) {
+		for (int x = 0; x <= _screenWidth - 1; x++) {
+			uint16 pixel = *(src + y * _screenWidth + x);
 			uint8 r = (pixel & 0xF800) >> 8;
 			uint8 g = (pixel & 0x07E0) >> 3;
 			uint8 b = (pixel & 0x001F) << 3;
@@ -840,12 +934,12 @@ Bitmap *GfxTinyGL::getScreenshot(int w, int h) {
 		}
 	}
 
-	float step_x = 640.0f / w;
-	float step_y = 480.0f / h;
+	float step_x = (float)_screenWidth / w;
+	float step_y = (float)_screenHeight / h;
 	step = 0;
-	for (float y = 0; y < 479; y += step_y) {
-		for (float x = 0; x < 639; x += step_x) {
-			uint16 pixel = *(src + (int)y * 640 + (int)x);
+	for (float y = 0; y < _screenHeight - 1; y += step_y) {
+		for (float x = 0; x < _screenWidth - 1; x += step_x) {
+			uint16 pixel = *(src + (int)y * _screenWidth + (int)x);
 			buffer[step++] = pixel;
 		}
 	}
@@ -856,16 +950,16 @@ Bitmap *GfxTinyGL::getScreenshot(int w, int h) {
 }
 
 void GfxTinyGL::storeDisplay() {
-	memcpy(_storedDisplay, _zb->pbuf, 640 * 480 * 2);
+	memcpy(_storedDisplay, _zb->pbuf, _screenWidth * _screenHeight * 2);
 }
 
 void GfxTinyGL::copyStoredToDisplay() {
-	memcpy(_zb->pbuf, _storedDisplay, 640 * 480 * 2);
+	memcpy(_zb->pbuf, _storedDisplay, _screenWidth * _screenHeight * 2);
 }
 
 void GfxTinyGL::dimScreen() {
 	uint16 *data = (uint16 *)_storedDisplay;
-	for (int l = 0; l < 640 * 480; l++) {
+	for (int l = 0; l < _screenWidth * _screenHeight; l++) {
 		uint16 pixel = data[l];
 		uint8 r = (pixel & 0xF800) >> 8;
 		uint8 g = (pixel & 0x07E0) >> 3;
@@ -876,10 +970,14 @@ void GfxTinyGL::dimScreen() {
 }
 
 void GfxTinyGL::dimRegion(int x, int y, int w, int h, float level) {
+	x = toScreenX(x);
+	y = toScreenY(y);
+	w = toScreenX(w);
+	h = toScreenY(h);
 	uint16 *data = (uint16 *)_zb->pbuf;
 	for (int ly = y; ly < y + h; ly++) {
 		for (int lx = x; lx < x + w; lx++) {
-			uint16 pixel = data[ly * 640 + lx];
+			uint16 pixel = data[ly * _screenWidth + lx];
 			uint8 r = (pixel & 0xF800) >> 8;
 			uint8 g = (pixel & 0x07E0) >> 3;
 			uint8 b = (pixel & 0x001F) << 3;
@@ -891,76 +989,76 @@ void GfxTinyGL::dimRegion(int x, int y, int w, int h, float level) {
 
 void GfxTinyGL::drawRectangle(PrimitiveObject *primitive) {
 	uint16 *dst = (uint16 *)_zb->pbuf;
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
 
 	const Color &color = *primitive->getColor();
 	uint16 c = ((color.getRed() & 0xF8) << 8) | ((color.getGreen() & 0xFC) << 3) | (color.getBlue() >> 3);
 
 	if (primitive->isFilled()) {
 		for (; y1 <= y2; y1++)
-			if (y1 >= 0 && y1 < 480)
+			if (y1 >= 0 && y1 < _screenWidth)
 				for (int x = x1; x <= x2; x++)
-					if (x >= 0 && x < 640)
-						WRITE_UINT16(dst + 640 * y1 + x, c);
+					if (x >= 0 && x < _screenWidth)
+						WRITE_UINT16(dst + _screenWidth * y1 + x, c);
 	} else {
-		if (y1 >= 0 && y1 < 480)
+		if (y1 >= 0 && y1 < _screenHeight)
 			for (int x = x1; x <= x2; x++)
-				if (x >= 0 && x < 640)
-					WRITE_UINT16(dst + 640 * y1 + x, c);
-		if (y2 >= 0 && y2 < 480)
+				if (x >= 0 && x < _screenWidth)
+					WRITE_UINT16(dst + _screenWidth * y1 + x, c);
+		if (y2 >= 0 && y2 < _screenHeight)
 			for (int x = x1; x <= x2; x++)
-				if (x >= 0 && x < 640)
-					WRITE_UINT16(dst + 640 * y2 + x, c);
-		if (x1 >= 0 && x1 < 640)
+				if (x >= 0 && x < _screenWidth)
+					WRITE_UINT16(dst + _screenWidth * y2 + x, c);
+		if (x1 >= 0 && x1 < _screenWidth)
 			for (int y = y1; y <= y2; y++)
-				if (y >= 0 && y < 480)
-					WRITE_UINT16(dst + 640 * y + x1, c);
-		if (x2 >= 0 && x2 < 640)
+				if (y >= 0 && y < _screenHeight)
+					WRITE_UINT16(dst + _screenWidth * y + x1, c);
+		if (x2 >= 0 && x2 < _screenWidth)
 			for (int y = y1; y <= y2; y++)
-				if (y >= 0 && y < 480)
-					WRITE_UINT16(dst + 640 * y + x2, c);
+				if (y >= 0 && y < _screenHeight)
+					WRITE_UINT16(dst + _screenWidth * y + x2, c);
 	}
 }
 
 void GfxTinyGL::drawLine(PrimitiveObject *primitive) {
 	uint16 *dst = (uint16 *)_zb->pbuf;
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
 
 	const Color &color = *primitive->getColor();
 	uint16 c = ((color.getRed() & 0xF8) << 8) | ((color.getGreen() & 0xFC) << 3) | (color.getBlue() >> 3);
 
 	if (x2 == x1) {
 		for (int y = y1; y <= y2; y++) {
-			if (x1 >= 0 && x1 < 640 && y >= 0 && y < 480)
-				WRITE_UINT16(dst + 640 * y + x1, c);
+			if (x1 >= 0 && x1 < _screenWidth && y >= 0 && y < _screenHeight)
+				WRITE_UINT16(dst + _screenWidth * y + x1, c);
 		}
 	} else {
 		float m = (y2 - y1) / (x2 - x1);
 		int b = (int)(-m * x1 + y1);
 		for (int x = x1; x <= x2; x++) {
 			int y = (int)(m * x) + b;
-			if (x >= 0 && x < 640 && y >= 0 && y < 480)
-				WRITE_UINT16(dst + 640 * y + x, c);
+			if (x >= 0 && x < _screenWidth && y >= 0 && y < _screenHeight)
+				WRITE_UINT16(dst + _screenWidth * y + x, c);
 		}
 	}
 }
 
 void GfxTinyGL::drawPolygon(PrimitiveObject *primitive) {
 	uint16 *dst = (uint16 *)_zb->pbuf;
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
-	int x3 = primitive->getP3().x;
-	int y3 = primitive->getP3().y;
-	int x4 = primitive->getP4().x;
-	int y4 = primitive->getP4().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
+	int x3 = toScreenX(primitive->getP3().x);
+	int y3 = toScreenY(primitive->getP3().y);
+	int x4 = toScreenX(primitive->getP4().x);
+	int y4 = toScreenY(primitive->getP4().y);
 	float m;
 	int b;
 
@@ -971,15 +1069,15 @@ void GfxTinyGL::drawPolygon(PrimitiveObject *primitive) {
 	b = (int)(-m * x1 + y1);
 	for (int x = x1; x <= x2; x++) {
 		int y = (int)(m * x) + b;
-		if (x >= 0 && x < 640 && y >= 0 && y < 480)
-			WRITE_UINT16(dst + 640 * y + x, c);
+		if (x >= 0 && x < _screenWidth && y >= 0 && y < _screenHeight)
+			WRITE_UINT16(dst + _screenWidth * y + x, c);
 	}
 	m = (y4 - y3) / (x4 - x3);
 	b = (int)(-m * x3 + y3);
 	for (int x = x3; x <= x4; x++) {
 		int y = (int)(m * x) + b;
-		if (x >= 0 && x < 640 && y >= 0 && y < 480)
-			WRITE_UINT16(dst + 640 * y + x, c);
+		if (x >= 0 && x < _screenWidth && y >= 0 && y < _screenHeight)
+			WRITE_UINT16(dst + _screenWidth * y + x, c);
 	}
 }
 

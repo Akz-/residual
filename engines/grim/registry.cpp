@@ -49,6 +49,8 @@ Registry *g_registry = NULL;
 // soft_renderer
 // fullscreen
 // engine_speed
+// screen_width
+// screen_height
 
 Registry::Registry() : _dirty(true) {
 	_develMode = ConfMan.get("game_devel_mode");
@@ -70,6 +72,8 @@ Registry::Registry() : _dirty(true) {
 	_softRenderer = ConfMan.get("soft_renderer");
 	_fullscreen = ConfMan.get("fullscreen");
 	_engineSpeed = ConfMan.get("engine_speed");
+	_screenWidth = ConfMan.get("screen_width");
+	_screenHeight = ConfMan.get("screen_height");
 }
 
 const char *Registry::get(const char *key, const char *defval) const {
@@ -111,6 +115,10 @@ const char *Registry::get(const char *key, const char *defval) const {
 		return _fullscreen.c_str();
 	} else if (scumm_stricmp("engine_speed", key) == 0) {
 		return _engineSpeed.c_str();
+	} else if (scumm_stricmp("screen_width", key) == 0) {
+		return _screenWidth.c_str();
+	} else if (scumm_stricmp("screen_height", key) == 0) {
+		return _screenHeight.c_str();
 	}
 
 	return defval;
@@ -177,6 +185,12 @@ void Registry::set(const char *key, const char *val) {
 	} else if (scumm_stricmp("engine_speed", key) == 0) {
 		_engineSpeed = val;
 		return;
+	} else if (scumm_stricmp("screen_width", key) == 0) {
+		_screenWidth = val;
+		return;
+	} else if (scumm_stricmp("screen_height", key) == 0) {
+		_screenHeight = val;
+		return;
 	}
 }
 
@@ -203,6 +217,8 @@ void Registry::save() {
 	ConfMan.set("soft_renderer", _softRenderer);
 	ConfMan.set("fullscreen", _fullscreen);
 	ConfMan.set("engine_speed", _engineSpeed);
+	ConfMan.set("screen_width", _screenWidth);
+	ConfMan.set("screen_height", _screenHeight);
 
 	ConfMan.flushToDisk();
 

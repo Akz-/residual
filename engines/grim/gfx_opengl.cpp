@@ -261,11 +261,10 @@ void GfxOpenGL::getBoundingBoxPos(const Model::Mesh *model, int *x1, int *y1, in
 
 		for (int j = 0; j < model->_faces[i]._numVertices; j++) {
 			GLdouble modelView[16], projection[16];
-			GLint viewPort[4];
+			GLint viewPort[4] = {0, 0, 640, 480};
 
 			glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
 			glGetDoublev(GL_PROJECTION_MATRIX, projection);
-			glGetIntegerv(GL_VIEWPORT, viewPort);
 
 			pVertices = model->_vertices + 3 * model->_faces[i]._vertices[j];
 
@@ -636,6 +635,9 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 					texDataPtr[2] = (b << 3) | (b >> 2);
 					if (pixel == 0xf81f) { // transparent
 						texDataPtr[3] = 0;
+						texDataPtr[0] = 0;
+						texDataPtr[1] = 0;
+						texDataPtr[2] = 0;
 						bitmap->_hasTransparency = true;
 					} else {
 						texDataPtr[3] = 255;
@@ -651,10 +653,15 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 
 			for (int i = 0; i < bitmap->_numTex; i++) {
 				glBindTexture(GL_TEXTURE_2D, textures[bitmap->_numTex * pic + i]);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+				if (bitmap->_format == 1) {
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				} else {
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				}
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexImage2D(GL_TEXTURE_2D, 0, format, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, format, type, NULL);
 			}
 
@@ -691,7 +698,7 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap) {
 	// For now, just keep this here :-)
 	if (bitmap->getFormat() == 1 && bitmap->getHasTransparency()) {
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	} else
 		glDisable(GL_BLEND);
 	glDisable(GL_LIGHTING);
@@ -723,7 +730,8 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap) {
 	}
 
 	glEnable(GL_SCISSOR_TEST);
-	glScissor(bitmap->getX(), _screenHeight - (bitmap->getY() + bitmap->getHeight()), bitmap->getWidth(), bitmap->getHeight());
+	glScissor(toScreenX(bitmap->getX()), _screenHeight - toScreenY(bitmap->getY() + bitmap->getHeight()), 
+		toScreenX(bitmap->getWidth()), toScreenY(bitmap->getHeight()));
 	int cur_tex_idx = bitmap->getNumTex() * (bitmap->getCurrentImage() - 1);
 	for (int y = bitmap->getY(); y < (bitmap->getY() + bitmap->getHeight()); y += BITMAP_TEXTURE_SIZE) {
 		for (int x = bitmap->getX(); x < (bitmap->getX() + bitmap->getWidth()); x += BITMAP_TEXTURE_SIZE) {
@@ -731,13 +739,13 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap) {
 			glBindTexture(GL_TEXTURE_2D, textures[cur_tex_idx]);
 			glBegin(GL_QUADS);
 			glTexCoord2f(0.0f, 0.0f);
-			glVertex2i(x, y);
+			glVertex2i(toScreenX(x), toScreenY(y));
 			glTexCoord2f(1.0f, 0.0f);
-			glVertex2i(x + BITMAP_TEXTURE_SIZE, y);
+			glVertex2i(toScreenX(x + BITMAP_TEXTURE_SIZE), toScreenY(y));
 			glTexCoord2f(1.0f, 1.0f);
-			glVertex2i(x + BITMAP_TEXTURE_SIZE, y + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(x + BITMAP_TEXTURE_SIZE), toScreenY(y + BITMAP_TEXTURE_SIZE));
 			glTexCoord2f(0.0f, 1.0f);
-			glVertex2i(x, y + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(x), toScreenY(y + BITMAP_TEXTURE_SIZE));
 			glEnd();
 			cur_tex_idx++;
 		}
@@ -820,11 +828,12 @@ void GfxOpenGL::drawDepthBitmap(int x, int y, int w, int h, char *data) {
 	//		warning("Animation not handled yet in GL texture path");
 	//	}
 
+	glPixelZoom(_screenWidth / 640.0f, _screenHeight / 480.0f);
 	if (y + h == 480) {
-		glRasterPos2i(x, _screenHeight - 1);
+		glRasterPos2i(toScreenX(x), _screenHeight - 1);
 		glBitmap(0, 0, 0, 0, 0, -1, NULL);
 	} else
-		glRasterPos2i(x, y + h);
+		glRasterPos2i(toScreenX(x), toScreenY(y + h));
 
 	glDisable(GL_TEXTURE_2D);
 	glEnable(GL_DEPTH_TEST);
@@ -838,6 +847,7 @@ void GfxOpenGL::drawDepthBitmap(int x, int y, int w, int h, char *data) {
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDepthFunc(GL_LESS);
+	glPixelZoom(1, 1);
 }
 
 void GfxOpenGL::prepareSmushFrame(int width, int height, byte *bitmap) {
@@ -855,10 +865,10 @@ void GfxOpenGL::prepareSmushFrame(int width, int height, byte *bitmap) {
 	glGenTextures(_smushNumTex, _smushTexIds);
 	for (int i = 0; i < _smushNumTex; i++) {
 		glBindTexture(GL_TEXTURE_2D, _smushTexIds[i]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
 	}
 
@@ -900,7 +910,8 @@ void GfxOpenGL::drawSmushFrame(int offsetX, int offsetY) {
 	glDepthMask(GL_FALSE);
 	glEnable(GL_SCISSOR_TEST);
 
-	glScissor(offsetX, _screenHeight - (offsetY + _smushHeight), _smushWidth, _smushHeight);
+	glScissor(toScreenX(offsetX), _screenHeight - toScreenY(offsetY + _smushHeight),
+		toScreenX(_smushWidth), toScreenY(_smushHeight));
 
 	int curTexIdx = 0;
 	for (int y = 0; y < _smushHeight; y += BITMAP_TEXTURE_SIZE) {
@@ -908,13 +919,13 @@ void GfxOpenGL::drawSmushFrame(int offsetX, int offsetY) {
 			glBindTexture(GL_TEXTURE_2D, _smushTexIds[curTexIdx]);
 			glBegin(GL_QUADS);
 			glTexCoord2f(0, 0);
-			glVertex2i(x + offsetX, y + offsetY);
+			glVertex2i(toScreenX(x + offsetX), toScreenY(y + offsetY));
 			glTexCoord2f(1.0f, 0.0f);
-			glVertex2i(x + offsetX + BITMAP_TEXTURE_SIZE, y + offsetY);
+			glVertex2i(toScreenX(x + offsetX + BITMAP_TEXTURE_SIZE), toScreenY(y + offsetY));
 			glTexCoord2f(1.0f, 1.0f);
-			glVertex2i(x + offsetX + BITMAP_TEXTURE_SIZE, y + offsetY + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(x + offsetX + BITMAP_TEXTURE_SIZE), toScreenY(y + offsetY + BITMAP_TEXTURE_SIZE));
 			glTexCoord2f(0.0f, 1.0f);
-			glVertex2i(x + offsetX, y + offsetY + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(x + offsetX), toScreenY(y + offsetY + BITMAP_TEXTURE_SIZE));
 			glEnd();
 			curTexIdx++;
 		}
@@ -957,7 +968,7 @@ void GfxOpenGL::drawEmergString(int x, int y, const char *text, const Color &fgC
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_LIGHTING);
 
-	glRasterPos2i(x, y);
+	glRasterPos2i(toScreenX(x), toScreenY(y));
 	glColor3f(1.0f, 1.0f, 1.0f);
 
 	glListBase(_emergFont);
@@ -1015,10 +1026,10 @@ GfxBase::TextObjectHandle *GfxOpenGL::createTextBitmap(uint8 *data, int width, i
 
 	for (int i = 0; i < handle->numTex; i++) {
 		glBindTexture(GL_TEXTURE_2D, ((GLuint *)handle->texIds)[i]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	}
 
@@ -1054,7 +1065,8 @@ void GfxOpenGL::drawTextBitmap(int x, int y, TextObjectHandle *handle) {
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	glEnable(GL_SCISSOR_TEST);
-	glScissor(x, 480 - (y + handle->height), handle->width, handle->height);
+	glScissor(toScreenX(x), _screenHeight - toScreenY(y + handle->height),
+		toScreenX(handle->width), toScreenY(handle->height));
 	int curTexIdx = 0;
 	for (int t_y = 0; t_y < handle->height; t_y += BITMAP_TEXTURE_SIZE) {
 		for (int t_x = 0; t_x < handle->width; t_x += BITMAP_TEXTURE_SIZE) {
@@ -1062,13 +1074,13 @@ void GfxOpenGL::drawTextBitmap(int x, int y, TextObjectHandle *handle) {
 			glBindTexture(GL_TEXTURE_2D, textures[curTexIdx]);
 			glBegin(GL_QUADS);
 			glTexCoord2f(0.0f, 0.0f);
-			glVertex2i(t_x + x, t_y + y);
+			glVertex2i(toScreenX(t_x + x), toScreenY(t_y + y));
 			glTexCoord2f(1.0f, 0.0f);
-			glVertex2i(t_x + x + BITMAP_TEXTURE_SIZE, y + t_y);
+			glVertex2i(toScreenX(t_x + x + BITMAP_TEXTURE_SIZE), toScreenY(y + t_y));
 			glTexCoord2f(1.0f, 1.0f);
-			glVertex2i(t_x + x + BITMAP_TEXTURE_SIZE, y + t_y + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(t_x + x + BITMAP_TEXTURE_SIZE), toScreenY(y + t_y + BITMAP_TEXTURE_SIZE));
 			glTexCoord2f(0.0f, 1.0f);
-			glVertex2i(t_x + x, t_y + y + BITMAP_TEXTURE_SIZE);
+			glVertex2i(toScreenX(t_x + x), toScreenY(t_y + y + BITMAP_TEXTURE_SIZE));
 			glEnd();
 			curTexIdx++;
 		}
@@ -1095,9 +1107,9 @@ Bitmap *GfxOpenGL::getScreenshot(int w, int h) {
 	uint32 *src = (uint32 *)_storedDisplay;
 
 	int step = 0;
-	for (int y = 0; y <= 479; y++) {
-		for (int x = 0; x <= 639; x++) {
-			uint32 pixel = *(src + y * 640 + x);
+	for (int y = 0; y <= _screenHeight - 1; y++) {
+		for (int x = 0; x <= _screenWidth - 1; x++) {
+			uint32 pixel = *(src + y * _screenWidth + x);
 			uint8 r = (pixel & 0xFF0000);
 			uint8 g = (pixel & 0x00FF00);
 			uint8 b = (pixel & 0x0000FF);
@@ -1109,8 +1121,8 @@ Bitmap *GfxOpenGL::getScreenshot(int w, int h) {
 	float step_x = _screenWidth * 1.0f / w;
 	float step_y = _screenHeight * 1.0f / h;
 	step = 0;
-	for (float y = 0; y < 479; y += step_y) {
-		for (float x = 0; x < 639; x += step_x) {
+	for (float y = 0; y < _screenHeight - 1; y += step_y) {
+		for (float x = 0; x < _screenWidth - 1; x += step_x) {
 			uint32 pixel = *(src + (int)y * _screenWidth + (int)x);
 			uint8 r = (pixel & 0xFF0000) >> 16;
 			uint8 g = (pixel & 0x00FF00) >> 8;
@@ -1165,6 +1177,10 @@ void GfxOpenGL::dimScreen() {
 }
 
 void GfxOpenGL::dimRegion(int x, int yReal, int w, int h, float level) {
+	x = toScreenX(x);
+	yReal = toScreenY(yReal);
+	w = toScreenX(w);
+	h = toScreenY(h);
 	uint32 *data = new uint32[w * h];
 	int y = _screenHeight - yReal;
 
@@ -1203,16 +1219,20 @@ void GfxOpenGL::dimRegion(int x, int yReal, int w, int h, float level) {
 }
 
 void GfxOpenGL::drawRectangle(PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
+	int x1p = toScreenX(primitive->getP1().x + 1);
+	int y1p = toScreenY(primitive->getP1().y + 1);
+	int x2p = toScreenX(primitive->getP2().x + 1);
+	int y2p = toScreenY(primitive->getP2().y + 1);
 
 	const Color &color = *primitive->getColor();
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, _screenWidth, _screenHeight, 0, 0, 1);
+	glOrtho(0, _screenWidth, _screenHeight, 0, -1, 1);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
@@ -1224,15 +1244,34 @@ void GfxOpenGL::drawRectangle(PrimitiveObject *primitive) {
 
 	if (primitive->isFilled()) {
 		glBegin(GL_QUADS);
+		glVertex2i(x1, y1);
+		glVertex2i(x2p, y1);
+		glVertex2i(x2p, y2p);
+		glVertex2i(x1, y2p);
+		glEnd();
 	} else {
-		glBegin(GL_LINE_LOOP);
-	}
+		glBegin(GL_QUADS);
+		glVertex2f(x1, y1);
+		glVertex2f(x1, y1p);
+		glVertex2f(x2, y1p);
+		glVertex2f(x2, y1);
 
-	glVertex2i(x1, y1);
-	glVertex2i(x2, y1);
-	glVertex2i(x2, y2);
-	glVertex2i(x1, y2);
-	glEnd();
+		glVertex2f(x1, y2);
+		glVertex2f(x1, y2p);
+		glVertex2f(x2, y2p);
+		glVertex2f(x2, y2);
+
+		glVertex2f(x1, y1);
+		glVertex2f(x1, y2);
+		glVertex2f(x1p, y2);
+		glVertex2f(x1p, y1);
+
+		glVertex2f(x2, y1);
+		glVertex2f(x2, y2p);
+		glVertex2f(x2p, y2p);
+		glVertex2f(x2p, y1);
+		glEnd();
+	}
 
 	glColor3f(1.0f, 1.0f, 1.0f);
 
@@ -1242,10 +1281,10 @@ void GfxOpenGL::drawRectangle(PrimitiveObject *primitive) {
 }
 
 void GfxOpenGL::drawLine(PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
 
 	const Color &color = *primitive->getColor();
 
@@ -1274,14 +1313,14 @@ void GfxOpenGL::drawLine(PrimitiveObject *primitive) {
 }
 
 void GfxOpenGL::drawPolygon(PrimitiveObject *primitive) {
-	int x1 = primitive->getP1().x;
-	int y1 = primitive->getP1().y;
-	int x2 = primitive->getP2().x;
-	int y2 = primitive->getP2().y;
-	int x3 = primitive->getP3().x;
-	int y3 = primitive->getP3().y;
-	int x4 = primitive->getP4().x;
-	int y4 = primitive->getP4().y;
+	int x1 = toScreenX(primitive->getP1().x);
+	int y1 = toScreenY(primitive->getP1().y);
+	int x2 = toScreenX(primitive->getP2().x);
+	int y2 = toScreenY(primitive->getP2().y);
+	int x3 = toScreenX(primitive->getP3().x);
+	int y3 = toScreenY(primitive->getP3().y);
+	int x4 = toScreenX(primitive->getP4().x);
+	int y4 = toScreenY(primitive->getP4().y);
 
 	const Color &color = *primitive->getColor();
 

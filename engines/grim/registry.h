@@ -59,6 +59,8 @@ private:
 	Common::String _softRenderer;
 	Common::String _fullscreen;
 	Common::String _engineSpeed;
+	Common::String _screenWidth;
+	Common::String _screenHeight;
 
 	bool _dirty;
 };
