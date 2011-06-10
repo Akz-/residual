@@ -165,6 +165,8 @@ byte *GfxTinyGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 	_screenBPP = 15;
 	_isFullscreen = g_system->getFeatureState(OSystem::kFeatureFullscreenMode);
 
+	g_system->showMouse(!fullscreen);
+
 	g_system->setWindowCaption("Residual: Software 3D Renderer");
 
 	_zb = TinyGL::ZB_open(screenW, screenH, ZB_MODE_5R6G5B, buffer);
@@ -370,7 +372,7 @@ void GfxTinyGL::startActorDraw(Graphics::Vector3d pos, float scale, float yaw, f
 		tglSetShadowColor(_shadowColorR, _shadowColorG, _shadowColorB);
 		tglSetShadowMaskBuf(_currentShadowArray->shadowMask);
 		SectorListType::iterator i = _currentShadowArray->planeList.begin();
-		Sector *shadowSector = *i;
+		Sector *shadowSector = i->sector;
 		tglShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
 	}
 
@@ -417,7 +419,7 @@ void GfxTinyGL::drawShadowPlanes() {
 	tglSetShadowMaskBuf(_currentShadowArray->shadowMask);
 	_currentShadowArray->planeList.begin();
 	for (SectorListType::iterator i = _currentShadowArray->planeList.begin(); i != _currentShadowArray->planeList.end(); ++i) {
-		Sector *shadowSector = *i;
+		Sector *shadowSector = i->sector;
 		tglBegin(TGL_POLYGON);
 		for (int k = 0; k < shadowSector->getNumVertices(); k++) {
 			tglVertex3f(shadowSector->getVertices()[k].x(), shadowSector->getVertices()[k].y(), shadowSector->getVertices()[k].z());
@@ -752,6 +754,119 @@ void GfxTinyGL::destroyBitmap(BitmapData *bitmap) {
 	}
 }
 
+void GfxTinyGL::createFont(Font *font) {
+}
+
+void GfxTinyGL::destroyFont(Font *font) {
+}
+
+struct TextObjectData {
+	byte *data;
+	int width, height, x, y;
+};
+
+void GfxTinyGL::createTextObject(TextObject *text) {
+	int numLines = text->getNumLines();
+	const Common::String *lines = text->getLines();
+	const Font *font = text->getFont();
+	const Color *fgColor = text->getFGColor();
+	TextObjectData *userData = new TextObjectData[numLines];
+	text->setUserData(userData);
+	for (int j = 0; j < numLines; j++) {
+		const Common::String &currentLine = lines[j];
+
+		int width = font->getStringLength(currentLine) + 1;
+		int height = font->getHeight();
+
+		uint8 *_textBitmap = new uint8[height * width];
+		memset(_textBitmap, 0, height * width);
+
+		// Fill bitmap
+		int startOffset = 0;
+		for (unsigned int d = 0; d < currentLine.size(); d++) {
+			int ch = currentLine[d];
+			int8 startingLine = font->getCharStartingLine(ch) + font->getBaseOffsetY();
+			int32 charDataWidth = font->getCharDataWidth(ch);
+			int32 charWidth = font->getCharWidth(ch);
+			int8 startingCol = font->getCharStartingCol(ch);
+			for (int line = 0; line < font->getCharDataHeight(ch); line++) {
+				int offset = startOffset + (width * (line + startingLine));
+				for (int r = 0; r < charDataWidth; r++) {
+					const byte pixel = *(font->getCharData(ch) + r + (charDataWidth * line));
+					byte *dst = _textBitmap + offset + startingCol + r;
+					if (*dst == 0 && pixel != 0)
+						_textBitmap[offset + startingCol + r] = pixel;
+				}
+				if (line + startingLine >= font->getHeight())
+					break;
+			}
+			startOffset += charWidth;
+		}
+
+		uint16 *texData = new uint16[width * height];
+		uint16 *texDataPtr = texData;
+		uint8 *bitmapData = _textBitmap;
+		uint8 r = fgColor->getRed();
+		uint8 g = fgColor->getGreen();
+		uint8 b = fgColor->getBlue();
+		uint16 color = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+		if (color == 0xf81f)
+			color = 0xf81e;
+
+		for (int i = 0; i < width * height; i++, texDataPtr++, bitmapData++) {
+			byte pixel = *bitmapData;
+			if (pixel == 0x00) {
+				WRITE_UINT16(texDataPtr, 0xf81f);
+			} else if (pixel == 0x80) {
+				*texDataPtr = 0;
+			} else if (pixel == 0xFF) {
+				WRITE_UINT16(texDataPtr, color);
+			}
+		}
+
+
+		userData[j].width = toScreenX(width);
+		userData[j].height = toScreenY(height);
+		userData[j].data = (byte *)texData;
+		userData[j].x = toScreenX(text->getLineX(j));
+		userData[j].y = toScreenY(text->getLineY(j));
+
+		// If not using the default resolution of 640x480, resize the bitmap to
+		// match whatever screen resolution we're using.
+		if (_screenWidth != 640 || _screenHeight != 480) {
+			int newWidth = toScreenX(width);
+			int newHeight = toScreenY(height);
+			userData[j].data = (byte *)new uint16[newWidth * newHeight];
+			resizeNearest(texData, (uint16 *)userData[j].data, width, height, newWidth, newHeight);
+			delete[] texData;
+		}
+
+		delete[] _textBitmap;
+	}
+}
+
+void GfxTinyGL::drawTextObject(TextObject *text) {
+	TextObjectData *userData = (TextObjectData *)text->getUserData();
+	if (userData) {
+		int numLines = text->getNumLines();
+		for (int i = 0; i < numLines; ++i) {
+			TinyGLBlit((byte *)_zb->pbuf, userData[i].data, userData[i].x, userData[i].y, userData[i].width, userData[i].height, _screenWidth, _screenHeight, _zb->linesize, true);
+		}
+	}
+
+}
+
+void GfxTinyGL::destroyTextObject(TextObject *text) {
+	TextObjectData *userData = (TextObjectData *)text->getUserData();
+	if (userData) {
+		int numLines = text->getNumLines();
+		for (int i = 0; i < numLines; ++i) {
+			delete[] userData[i].data;
+		}
+		delete[] userData;
+	}
+}
+
 void GfxTinyGL::createMaterial(Material *material, const char *data, const CMap *cmap) {
 	material->_textures = new TGLuint[material->_numImages];
 	tglGenTextures(material->_numImages, (TGLuint *)material->_textures);
@@ -860,61 +975,6 @@ void GfxTinyGL::drawEmergString(int x, int y, const char *text, const Color &fgC
 		}
 		x += 10;
 	}
-}
-
-GfxBase::TextObjectHandle *GfxTinyGL::createTextBitmap(uint8 *data, int width, int height, const Color &fgColor) {
-	TextObjectHandle *handle = new TextObjectHandle;
-	handle->width = width;
-	handle->height = height;
-	handle->numTex = 0;
-	handle->texIds = NULL;
-
-	// Convert data to 16-bit RGB 565 format
-	uint16 *texData = new uint16[width * height];
-	uint16 *texDataPtr = texData;
-	handle->bitmapData = texData;
-	uint8 *bitmapData = data;
-	uint8 r = fgColor.getRed();
-	uint8 g = fgColor.getGreen();
-	uint8 b = fgColor.getBlue();
-	uint16 color = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
-	if (color == 0xf81f)
-		color = 0xf81e;
-
-	for (int i = 0; i < width * height; i++, texDataPtr++, bitmapData++) {
-		byte pixel = *bitmapData;
-		if (pixel == 0x00) {
-			WRITE_UINT16(texDataPtr, 0xf81f);
-		} else if (pixel == 0x80) {
-			*texDataPtr = 0;
-		} else if (pixel == 0xFF) {
-			WRITE_UINT16(texDataPtr, color);
-		}
-	}
-
-	// If not using the default resolution of 640x480, resize the bitmap to
-	// match whatever screen resolution we're using.
-	if (_screenWidth != 640 || _screenHeight != 480) {
-		int newWidth = toScreenX(width);
-		int newHeight = toScreenY(height);
-		handle->bitmapData = new uint16[newWidth * newHeight];
-		resizeNearest(texData, handle->bitmapData, width, height, newWidth, newHeight);
-		delete[] texData;
-	}
-
-	return handle;
-}
-
-void GfxTinyGL::drawTextBitmap(int x, int y, TextObjectHandle *handle) {
-	x = toScreenX(x);
-	y = toScreenY(y);
-	int width = toScreenX(handle->width);
-	int height = toScreenY(handle->height);
-	TinyGLBlit((byte *)_zb->pbuf, (byte *)handle->bitmapData, x, y, width, height, _screenWidth, _screenHeight, _zb->linesize, true);
-}
-
-void GfxTinyGL::destroyTextBitmap(TextObjectHandle *handle) {
-	delete[] handle->bitmapData;
 }
 
 Bitmap *GfxTinyGL::getScreenshot(int w, int h) {

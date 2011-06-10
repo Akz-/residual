@@ -30,6 +30,8 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_getwd
 #define FORBIDDEN_SYMBOL_EXCEPTION_mkdir
 #define FORBIDDEN_SYMBOL_EXCEPTION_unlink
+#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdin
 
 #if defined(WIN32)
 #include <windows.h>
@@ -365,7 +367,7 @@ GrimEngine::GrimEngine(OSystem *syst, uint32 gameFlags, GrimGameType gameType, C
 	}
 	_speechMode = TextAndVoice;
 	_textSpeed = 7;
-	_mode = _previousMode = ENGINE_MODE_IDLE;
+	_mode = _previousMode = ENGINE_MODE_NORMAL;
 	_flipEnable = true;
 	int speed = atol(g_registry->get("engine_speed", "30"));
 	if (speed <= 0 || speed > 100)
@@ -941,6 +943,7 @@ void GrimEngine::updateDisplayScene() {
 		g_driver->clearScreen();
 
 		_prevSmushFrame = 0;
+		_movieTime = 0;
 
 		_currScene->drawBackground();
 
@@ -997,6 +1000,8 @@ void GrimEngine::updateDisplayScene() {
 		drawPrimitives();
 	} else if (_mode == ENGINE_MODE_DRAW) {
 		_doFlip = false;
+		_prevSmushFrame = 0;
+		_movieTime = 0;
 	}
 }
 
@@ -1009,11 +1014,12 @@ void GrimEngine::doFlip() {
 
 	if (_showFps && _doFlip && _mode != ENGINE_MODE_DRAW) {
 		_frameCounter++;
-		_timeAccum += _frameTime;
-		if (_timeAccum > 500) {
-			sprintf(_fps, "%7.2f", (double)(_frameCounter * 1000) / (double)_timeAccum );
+		unsigned int currentTime = g_system->getMillis();
+		unsigned int delta = currentTime - _lastFrameTime;
+		if (delta > 500) {
+			sprintf(_fps, "%7.2f", (double)(_frameCounter * 1000) / (double)delta );
 			_frameCounter = 0;
-			_timeAccum = 0;
+			_lastFrameTime = currentTime;
 		}
 	}
 }
@@ -1023,7 +1029,7 @@ void GrimEngine::mainLoop() {
 	_frameTime = 0;
 	_frameStart = g_system->getMillis();
 	_frameCounter = 0;
-	_timeAccum = 0;
+	_lastFrameTime = 0;
 	_frameTimeCollection = 0;
 	_prevSmushFrame = 0;
 	_refreshShadowMask = false;
@@ -1040,12 +1046,6 @@ void GrimEngine::mainLoop() {
 
 		g_imuse->flushTracks();
 		g_imuse->refreshScripts();
-
-		if (_mode == ENGINE_MODE_IDLE) {
-			// don't kill CPU
-			g_system->delayMillis(10);
-			continue;
-		}
 
 		// Process events
 		Common::Event event;

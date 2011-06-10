@@ -29,6 +29,7 @@
 
 #if defined (SDL_BACKEND) && !defined(__amigaos4__)
 #include <SDL_opengl.h>
+#undef ARRAYSIZE
 #else
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -85,6 +86,13 @@ public:
 	void drawBitmap(const Bitmap *bitmap);
 	void destroyBitmap(BitmapData *bitmap);
 
+	void createFont(Font *font);
+	void destroyFont(Font *font);
+
+	void createTextObject(TextObject *text);
+	void drawTextObject(TextObject *text);
+	void destroyTextObject(TextObject *text);
+
 	Bitmap *getScreenshot(int w, int h);
 	void storeDisplay();
 	void copyStoredToDisplay();
@@ -93,9 +101,6 @@ public:
 
 	void drawEmergString(int x, int y, const char *text, const Color &fgColor);
 	void loadEmergFont();
-	TextObjectHandle *createTextBitmap(uint8 *bitmap, int width, int height, const Color &fgColor);
-	void drawTextBitmap(int x, int y, TextObjectHandle *handle);
-	void destroyTextBitmap(TextObjectHandle *handle);
 
 	void drawRectangle(PrimitiveObject *primitive);
 	void drawLine(PrimitiveObject *primitive);

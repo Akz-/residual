@@ -57,7 +57,7 @@ Actor::Actor(const Common::String &actorName) :
 		_walkCostume(NULL), _walkChore(-1), _walkedLast(false), _walkedCur(false),
 		_turnCostume(NULL), _leftTurnChore(-1), _rightTurnChore(-1),
 		_lastTurnDir(0), _currTurnDir(0),
-		_mumbleCostume(NULL), _mumbleChore(-1), _sayLineText(NULL) {
+		_mumbleCostume(NULL), _mumbleChore(-1), _sayLineText(0) {
 	_lookingMode = false;
 	_lookAtRate = 200;
 	_constrain = false;
@@ -71,6 +71,7 @@ Actor::Actor(const Common::String &actorName) :
 	_lastStepTime = 0;
 	_running = false;
 	_scale = 1.f;
+	_timeScale = 1.f;
 
 	for (int i = 0; i < 5; i++) {
 		_shadowArray[i].active = false;
@@ -98,6 +99,7 @@ Actor::Actor() :
 	_lastStepTime = 0;
 	_running = false;
 	_scale = 1.f;
+	_timeScale = 1.f;
 
 	for (int i = 0; i < 5; i++) {
 		_shadowArray[i].active = false;
@@ -143,7 +145,8 @@ void Actor::saveState(SaveGame *savedState) const {
 	savedState->writeFloat(_reflectionAngle);
 	savedState->writeLESint32(_visible);
 	savedState->writeLESint32(_lookingMode),
-	savedState->writeLESint32((int32)_scale);
+	savedState->writeFloat(_scale);
+	savedState->writeFloat(_timeScale);
 
 	savedState->writeString(_talkSoundName);
 
@@ -237,33 +240,20 @@ void Actor::saveState(SaveGame *savedState) const {
 		// Cannot use g_grim->getCurrScene() here because an actor can have walk planes
 		// from other scenes. It happens e.g. when Membrillo calls Velasco to tell him
 		// Naranja is dead.
-		if (_setName != "") {
-			Scene *s = g_grim->findScene(_setName);
-			for (SectorListType::iterator j = shadow.planeList.begin(); j != shadow.planeList.end(); ++j) {
-				Sector *sec = *j;
-				for (int k = 0; k < s->getSectorCount(); ++k) {
-					if (*s->getSectorBase(k) == *sec) {
-						savedState->writeLEUint32(k);
-						break;
-					}
-				}
-			}
+		for (SectorListType::iterator j = shadow.planeList.begin(); j != shadow.planeList.end(); ++j) {
+			Plane &p = *j;
+			savedState->writeString(p.setName);
+			savedState->writeString(p.sector->getName());
 		}
 
 		savedState->writeLESint32(shadow.shadowMaskSize);
-		for (int j = 0; j < shadow.shadowMaskSize; ++j) {
-			savedState->writeByte(shadow.shadowMask[j]);
-		}
+		savedState->write(shadow.shadowMask, shadow.shadowMaskSize);
 		savedState->writeLESint32(shadow.active);
 		savedState->writeLESint32(shadow.dontNegate);
 	}
 	savedState->writeLESint32(_activeShadowSlot);
 
-	if (_sayLineText) {
-		savedState->writeLEUint32(_sayLineText->getId());
-	} else {
-		savedState->writeLEUint32(0);
-	}
+	savedState->writeLEUint32(_sayLineText);
 
 	savedState->writeVector3d(_lookAtVector);
 	savedState->writeFloat(_lookAtRate);
@@ -301,7 +291,8 @@ bool Actor::restoreState(SaveGame *savedState) {
 	_reflectionAngle    = savedState->readFloat();
 	_visible            = savedState->readLESint32();
 	_lookingMode        = savedState->readLESint32();
-	_scale              = savedState->readLESint32();
+	_scale              = savedState->readFloat();
+	_timeScale          = savedState->readFloat();
 
 	_talkSoundName 		= savedState->readString();
 
@@ -398,13 +389,18 @@ bool Actor::restoreState(SaveGame *savedState) {
 		shadow.pos = savedState->readVector3d();
 
 		size = savedState->readLESint32();
-		if (_setName != "") {
-			Scene *scene = g_grim->findScene(_setName);
-			shadow.planeList.clear();
-			for (int j = 0; j < size; ++j) {
-				int32 id = savedState->readLEUint32();
-				Sector *s = new Sector(*scene->getSectorBase(id));
-				shadow.planeList.push_back(s);
+		shadow.planeList.clear();
+		Scene *scene = NULL;
+		for (int j = 0; j < size; ++j) {
+			Common::String setName = savedState->readString();
+			Common::String secName = savedState->readString();
+			if (!scene || scene->getName() != setName) {
+				scene = g_grim->findScene(setName);
+			}
+			if (scene) {
+				addShadowPlane(secName.c_str(), scene, i);
+			} else {
+				warning("%s: No scene \"%s\" found, cannot restore shadow on sector \"%s\"", getName().c_str(), setName.c_str(), secName.c_str());
 			}
 		}
 
@@ -412,9 +408,7 @@ bool Actor::restoreState(SaveGame *savedState) {
 		delete[] shadow.shadowMask;
 		if (shadow.shadowMaskSize > 0) {
 			shadow.shadowMask = new byte[shadow.shadowMaskSize];
-			for (int j = 0; j < shadow.shadowMaskSize; ++j) {
-				shadow.shadowMask[j] = savedState->readByte();
-			}
+			savedState->read(shadow.shadowMask, shadow.shadowMaskSize);
 		} else {
 			shadow.shadowMask = NULL;
 		}
@@ -423,7 +417,7 @@ bool Actor::restoreState(SaveGame *savedState) {
 	}
 	_activeShadowSlot = savedState->readLESint32();
 
-	_sayLineText = g_grim->getTextObject(savedState->readLEUint32());
+	_sayLineText = savedState->readLEUint32();
 
 	_lookAtVector = savedState->readVector3d();
 	_lookAtRate = savedState->readFloat();
@@ -507,7 +501,8 @@ void Actor::walkTo(const Graphics::Vector3d &p) {
 			Common::List<Sector *> sectors;
 			for (int i = 0; i < g_grim->getCurrScene()->getSectorCount(); ++i) {
 				Sector *s = g_grim->getCurrScene()->getSectorBase(i);
-				if ((s->getType() == Sector::WalkType || s->getType() == Sector::HotType) && s->isVisible()) {
+				int type = s->getType();
+				if ((type == Sector::WalkType || type == Sector::HotType || type == Sector::FunnelType) && s->isVisible()) {
 					sectors.push_back(s);
 				}
 			}
@@ -873,7 +868,8 @@ void Actor::sayLine(const char *msg, const char *msgId, bool background) {
 			// For example, when reading the work order (a LIP file exists for no reason).
 			// Also, some lip sync files have no entries
 			// In these cases, revert to using the mumble chore.
-			_lipSync = g_resourceloader->getLipSync(soundLip);
+			if (g_grim->getSpeechMode() != GrimEngine::TextOnly)
+				_lipSync = g_resourceloader->getLipSync(soundLip);
 			// If there's no lip sync file then load the mumble chore if it exists
 			// (the mumble chore doesn't exist with the cat races announcer)
 			if (!_lipSync && _mumbleChore != -1)
@@ -886,42 +882,50 @@ void Actor::sayLine(const char *msg, const char *msgId, bool background) {
 	g_grim->setTalkingActor(this);
 
 	if (_sayLineText) {
-		g_grim->killTextObject(_sayLineText);
-		_sayLineText = NULL;
+		TextObject *textObject = g_grim->getTextObject(_sayLineText);
+		if (textObject)
+			g_grim->killTextObject(textObject);
+		_sayLineText = 0;
 	}
 
 	GrimEngine::SpeechMode m = g_grim->getSpeechMode();
 	if (!g_grim->_sayLineDefaults.getFont() || m == GrimEngine::VoiceOnly || background)
 		return;
 
-	_sayLineText = new TextObject(false, true);
-	_sayLineText->setDefaults(&g_grim->_sayLineDefaults);
-	_sayLineText->setText(msg);
-	_sayLineText->setFGColor(_talkColor);
+	TextObject *textObject = new TextObject(false, true);
+	textObject->setDefaults(&g_grim->_sayLineDefaults);
+	textObject->setFGColor(_talkColor);
+	if (g_grim->getMode() == ENGINE_MODE_SMUSH)
+		g_grim->killTextObjects();
 	if (m == GrimEngine::TextOnly || g_grim->getMode() == ENGINE_MODE_SMUSH) {
-		_sayLineText->setDuration((float)strlen(msg) * 20.f / sqrt((float)g_grim->getTextSpeed() / 10.f));
+		textObject->setDuration(500 + strlen(msg) * 15 * (11 - g_grim->getTextSpeed()));
 	}
 	if (g_grim->getMode() == ENGINE_MODE_SMUSH) {
-		_sayLineText->setX(640 / 2);
-		_sayLineText->setY(456);
+		textObject->setX(640 / 2);
+		textObject->setY(456);
 	} else {
 		if (_winX1 == 1000 || _winX2 == -1000 || _winY2 == -1000) {
-			_sayLineText->setX(640 / 2);
-			_sayLineText->setY(463);
+			textObject->setX(640 / 2);
+			textObject->setY(463);
 		} else {
-			_sayLineText->setX((_winX1 + _winX2) / 2);
-			_sayLineText->setY(_winY1);
+			textObject->setX((_winX1 + _winX2) / 2);
+			textObject->setY(_winY1);
 		}
 	}
-	_sayLineText->createBitmap();
-	g_grim->registerTextObject(_sayLineText);
+	textObject->setText(msg);
+	g_grim->registerTextObject(textObject);
+	if (g_grim->getMode() != ENGINE_MODE_SMUSH)
+		_sayLineText = textObject->getId();
 }
 
 bool Actor::isTalking() {
 	// If there's no sound file then we're obviously not talking
 	GrimEngine::SpeechMode m = g_grim->getSpeechMode();
-	if ((m == GrimEngine::TextOnly && (!_sayLineText || _sayLineText->getDisabled())) ||
-	    (m != GrimEngine::TextOnly && (strlen(_talkSoundName.c_str()) == 0 || !g_imuse->getSoundStatus(_talkSoundName.c_str())))) {
+	TextObject *textObject = NULL;
+	if (_sayLineText)
+		textObject = g_grim->getTextObject(_sayLineText);
+	if ((m == GrimEngine::TextOnly && (!textObject || textObject->getDisabled())) ||
+			(m != GrimEngine::TextOnly && (strlen(_talkSoundName.c_str()) == 0 || !g_imuse->getSoundStatus(_talkSoundName.c_str())))) {
 		return false;
 	}
 
@@ -946,8 +950,10 @@ void Actor::shutUp() {
 	}
 
 	if (_sayLineText) {
-		g_grim->killTextObject(_sayLineText);
-		_sayLineText = NULL;
+		TextObject *textObject = g_grim->getTextObject(_sayLineText);
+		if (textObject)
+			g_grim->killTextObject(textObject);
+		_sayLineText = 0;
 	}
 	if (g_grim->getTalkingActor() == this) {
 		g_grim->setTalkingActor(NULL);
@@ -1287,23 +1293,28 @@ void Actor::setShadowPlane(const char *n) {
 	_shadowArray[_activeShadowSlot].name = n;
 }
 
-void Actor::addShadowPlane(const char *n) {
-	assert(_activeShadowSlot != -1);
+void Actor::addShadowPlane(const char *n, Scene *scene, int shadowId) {
+	assert(shadowId != -1);
 
-	int numSectors = g_grim->getCurrScene()->getSectorCount();
+	int numSectors = scene->getSectorCount();
 
 	for (int i = 0; i < numSectors; i++) {
 		// Create a copy so we are sure it will not be deleted by the Scene destructor
 		// behind our back. This is important when Membrillo phones Velasco to tell him
 		// Naranja is dead, because the scene changes back and forth few times and so
 		// the scenes' sectors are deleted while they are still keeped by the actors.
-		Sector *sector = g_grim->getCurrScene()->getSectorBase(i);
+		Sector *sector = scene->getSectorBase(i);
 		if (strmatch(sector->getName(), n)) {
-			_shadowArray[_activeShadowSlot].planeList.push_back(new Sector(*sector));
+			Plane p = { scene->getName(), new Sector(*sector) };
+			_shadowArray[shadowId].planeList.push_back(p);
 			g_grim->flagRefreshShadowMask(true);
 			return;
 		}
 	}
+}
+
+void Actor::addShadowPlane(const char *n) {
+	addShadowPlane(n, g_grim->getCurrScene(), _activeShadowSlot);
 }
 
 void Actor::setActiveShadow(int shadowId) {
@@ -1336,7 +1347,7 @@ void Actor::clearShadowPlanes() {
 	for (int i = 0; i < 5; i++) {
 		Shadow *shadow = &_shadowArray[i];
 		while (!shadow->planeList.empty()) {
-			delete shadow->planeList.back();
+			delete shadow->planeList.back().sector;
 			shadow->planeList.pop_back();
 		}
 		delete[] shadow->shadowMask;

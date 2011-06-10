@@ -811,15 +811,17 @@ void KeyframeComponent::update() {
 		return;
 	}
 
+	int time = g_grim->getFrameTime() * g_currentUpdatedActor->getTimeScale();
+
 	if (_anim._time < 0)		// For first time through
 		_anim._time = 0;
 	else if (!_paused)
-		_anim._time += g_grim->getFrameTime();
+		_anim._time += time;
 
 	int animLength = (int)(_anim._keyf->getLength() * 1000);
 
 	if (_fadeMode != None) {
-		_fadeCurrTime += g_grim->getFrameTime();
+		_fadeCurrTime += time;
 		if (_fadeCurrTime > _fadeLength) {
 			if (_fadeMode == FadeOut) {
 				_fadeMode = None;
@@ -1201,6 +1203,7 @@ void Costume::loadEMI(Common::MemoryReadStream &ms, Costume *prevCost) {
 	_chores = new Chore[_numChores];
 	for (int i = 0; i < _numChores; i++) {
 		uint32 nameLength;
+		Component *prevComponent = NULL;
 		nameLength = ms.readUint32LE();
 		ms.read(_chores[i]._name, nameLength);
 		float length;
@@ -1218,11 +1221,27 @@ void Costume::loadEMI(Common::MemoryReadStream &ms, Costume *prevCost) {
 			char name[64];
 			ms.read(name, componentNameLength);
 
-			//int trackID = ms.readUint32LE();
-			int parent = ms.readUint32LE();
-			assert(parent == -1);
+			ms.readUint32LE();
+			int parentID = ms.readUint32LE();
+			if (parentID == -1 && prevCost) {
+				MainModelComponent *mmc;
 
-			Component *component = loadComponentEMI(name, parent);
+				// However, only the first item can actually share the
+				// node hierarchy with the previous costume, so flag
+				// that component so it knows what to do
+				if (i == 0)
+					parentID = -2;
+				prevComponent = prevCost->_components[0];
+				mmc = dynamic_cast<MainModelComponent *>(prevComponent);
+				// Make sure that the component is valid
+				if (!mmc)
+					prevComponent = NULL;
+			}
+			// Actually load the appropriate component
+			Component *component = loadComponentEMI(parentID < 0 ? NULL : _components[parentID], parentID, name, prevComponent);
+
+
+			//Component *component = loadComponentEMI(name, parent);
 
 			components.push_back(component);
 
@@ -1445,14 +1464,16 @@ void Costume::Chore::update() {
 	if (!_playing)
 		return;
 
+	int time = g_grim->getFrameTime() * g_currentUpdatedActor->getTimeScale();
+
 	int newTime;
 	if (_currTime < 0)
 		newTime = 0; // For first time through
 	else
-		newTime = _currTime + g_grim->getFrameTime();
+		newTime = _currTime + time;
 
 	if (_fadeMode == FadeOut) {
-		_fade -= (float)g_grim->getFrameTime() / (float)_fadeLength;
+		_fade -= (float)time / (float)_fadeLength;
 		if (_fade <= 0.0f) {
 			_playing = false;
 			_fadeMode = None;
@@ -1466,7 +1487,7 @@ void Costume::Chore::update() {
 			return;
 		}
 	} else if (_fadeMode == FadeIn) {
-		_fade += (float)g_grim->getFrameTime() / (float)_fadeLength;
+		_fade += (float)time / (float)_fadeLength;
 		if (_fade >= 1.0f) {
 			_fadeMode = None;
 			_fade = 1.0f;
@@ -1534,8 +1555,11 @@ Costume::Component *Costume::loadComponent (tag32 tag, Costume::Component *paren
 	return NULL;
 }
 
-Costume::Component *Costume::loadComponentEMI(const char *name, int parentID) {
+Costume::Component *Costume::loadComponentEMI(Costume::Component *parent, int parentID, const char *name, Costume::Component *prevComponent) {
 	// some have an exclimation mark, this could mean something.
+	// for now, return 0 otherwise it will just crash in some other part.
+	return 0;
+
 	assert(name[0] == '!');
 	++name;
 

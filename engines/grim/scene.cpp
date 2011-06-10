@@ -265,6 +265,7 @@ void Scene::saveState(SaveGame *savedState) const {
 
 		//name
 		savedState->writeString(l._name);
+		savedState->writeLEBool(l._enabled);
 
 		//type
 		savedState->writeString(l._type);
@@ -341,6 +342,7 @@ bool Scene::restoreState(SaveGame *savedState) {
 		Light &l = _lights[i];
 
 		l._name = savedState->readString();
+		l._enabled = savedState->readLEBool();
 		l._type = savedState->readString();
 
 		l._pos           = savedState->readVector3d();
@@ -455,6 +457,8 @@ void Scene::Light::load(TextSplitter &ts) {
 	_color.getRed() = r;
 	_color.getGreen() = g;
 	_color.getBlue() = b;
+
+	_enabled = true;
 }
 
 void Scene::Light::loadBinary(Common::MemoryReadStream *ms) {
@@ -484,8 +488,13 @@ void Scene::setupLights() {
 		return;
 	}
 
+	int count = 0;
 	for (int i = 0; i < _numLights; i++) {
-		g_driver->setupLight(&_lights[i], i);
+		Light *l = &_lights[i];
+		if (l->_enabled) {
+			g_driver->setupLight(l, count);
+			++count;
+		}
 	}
 }
 
@@ -555,6 +564,20 @@ void Scene::findClosestSector(const Graphics::Vector3d &p, Sector **sect, Graphi
 		*closestPoint = resultPt;
 }
 
+void Scene::shrinkBoxes(float radius) {
+	for (int i = 0; i < _numSectors; i++) {
+		Sector *sector = _sectors[i];
+		sector->shrink(radius);
+	}
+}
+
+void Scene::unshrinkBoxes() {
+	for (int i = 0; i < _numSectors; i++) {
+		Sector *sector = _sectors[i];
+		sector->unshrink();
+	}
+}
+
 ObjectState *Scene::findState(const char *filename) {
 	// Check the different state objects for the bitmap
 	for (StateList::iterator i = _states.begin(); i != _states.end(); ++i) {
@@ -589,6 +612,23 @@ void Scene::setLightIntensity(const char *light, float intensity) {
 void Scene::setLightIntensity(int light, float intensity) {
 	Light &l = _lights[light];
 	l._intensity = intensity;
+	_lightsConfigured = false;
+}
+
+void Scene::setLightEnabled(const char *light, bool enabled) {
+	for (int i = 0; i < _numLights; ++i) {
+		Light &l = _lights[i];
+		if (l._name == light) {
+			l._enabled = enabled;
+			_lightsConfigured = false;
+			return;
+		}
+	}
+}
+
+void Scene::setLightEnabled(int light, bool enabled) {
+	Light &l = _lights[light];
+	l._enabled = enabled;
 	_lightsConfigured = false;
 }
 
@@ -639,7 +679,7 @@ void Scene::setSoundPosition(const char *soundName, Graphics::Vector3d pos, int 
 	right.normalize();
 	float angle = atan2(Graphics::dot(vector, right), Graphics::dot(vector, cameraVector));
 	float pan = sin(angle);
-	g_imuse->setPan(soundName, (int)((pan + 1.f) / 2.f * 127.f) + 0.5f);
+	g_imuse->setPan(soundName, (int)((pan + 1.f) / 2.f * 127.f + 0.5f));
 }
 
 Sector *Scene::getSectorBase(int id) {

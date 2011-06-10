@@ -22,6 +22,8 @@
 
 #define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
 #define FORBIDDEN_SYMBOL_EXCEPTION_fgetc
+#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdin
 
 #include "engines/grim/grim.h"
 #include "engines/grim/lua.h"
@@ -30,6 +32,7 @@
 #include "engines/grim/lipsync.h"
 #include "engines/grim/savegame.h"
 #include "engines/grim/colormap.h"
+#include "engines/grim/resource.h"
 
 #include "engines/grim/imuse/imuse.h"
 
@@ -64,7 +67,7 @@ void L1_ChangeTextObject() {
 	int paramId = 2;
 	if (lua_isuserdata(textObj) && lua_tag(textObj) == MKTAG('T', 'E', 'X', 'T')) {
 		TextObject *textObject = gettextobject(textObj);
-		do {
+		for (;;) {
 			lua_Object paramObj = lua_getparam(paramId++);
 			if (!paramObj)
 				break;
@@ -72,18 +75,17 @@ void L1_ChangeTextObject() {
 				if (!lua_istable(paramObj))
 					break;
 				setTextObjectParams(textObject, paramObj);
+				textObject->destroy();
 			} else {
 				line = lua_getstring(paramObj);
 				textObject->setText(line);
 				lua_getstring(paramObj);
 
 			}
-			textObject->destroyBitmap();
-			textObject->createBitmap();
 
 			lua_pushnumber(textObject->getBitmapWidth());
 			lua_pushnumber(textObject->getBitmapHeight());
-		} while (false);
+		}
 	}
 }
 
@@ -120,8 +122,6 @@ void L1_MakeTextObject() {
 		setTextObjectParams(textObject, tableObj);
 
 	textObject->setText(text.c_str());
-	if (!(g_grim->getGameFlags() & ADGF_DEMO))
-		textObject->createBitmap();
 	g_grim->registerTextObject(textObject);
 
 	lua_pushusertag(textObject->getId(), MKTAG('T', 'E', 'X', 'T'));
@@ -167,7 +167,8 @@ void L1_BlastText() {
 	}
 
 	const char *line = lua_getstring(textObj);
-	Common::String text = line;
+	if (!line || line[0] == 0)
+		return;
 
 	TextObject *textObject = new TextObject(true);
 	textObject->setDefaults(&g_grim->_blastTextDefaults);
@@ -175,8 +176,7 @@ void L1_BlastText() {
 	if (lua_istable(tableObj))
 		setTextObjectParams(textObject, tableObj);
 
-	textObject->setText(text.c_str());
-	textObject->createBitmap();
+	textObject->setText(line);
 	textObject->draw();
 	delete textObject;
 }
@@ -211,7 +211,9 @@ void setTextObjectParams(TextObjectCommon *textObject, lua_Object tableObj) {
 	lua_pushobject(lua_getref(refTextObjectFont));
 	keyObj = lua_gettable();
 	if (keyObj) {
-		if (lua_isuserdata(keyObj) && lua_tag(keyObj) == MKTAG('F','O','N','T')) {
+		if (g_grim->getGameType() == GType_MONKEY4 && lua_isstring(keyObj)) {
+			textObject->setFont(g_resourceloader->getFont(lua_getstring(keyObj)));
+		} else if (lua_isuserdata(keyObj) && lua_tag(keyObj) == MKTAG('F','O','N','T')) {
 			textObject->setFont(getfont(keyObj));
 		}
 	}
@@ -295,7 +297,7 @@ void setTextObjectParams(TextObjectCommon *textObject, lua_Object tableObj) {
 	keyObj = lua_gettable();
 	if (keyObj) {
 		if (lua_isnumber(keyObj)) {
-			textObject->setDuration(lua_getnumber(keyObj));
+			textObject->setDuration((int)lua_getnumber(keyObj));
 		}
 	}
 }

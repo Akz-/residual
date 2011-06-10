@@ -76,6 +76,8 @@ public:
 	void setLightIntensity(int light, float intensity);
 	void setLightPosition(const char *light, const Graphics::Vector3d &pos);
 	void setLightPosition(int light, const Graphics::Vector3d &pos);
+	void setLightEnabled(const char *light, bool enabled);
+	void setLightEnabled(int light, bool enabled);
 
 	void setSetup(int num);
 	int getSetup() const { return _currSetup - _setups; }
@@ -87,6 +89,8 @@ public:
 
 	Sector *findPointSector(const Graphics::Vector3d &p, Sector::SectorType type);
 	void findClosestSector(const Graphics::Vector3d &p, Sector **sect, Graphics::Vector3d *closestPt);
+	void shrinkBoxes(float radius);
+	void unshrinkBoxes();
 
 	void addObjectState(ObjectState *s) {
 		_states.push_back(s);
@@ -119,6 +123,7 @@ public:
 		Graphics::Vector3d _pos, _dir;
 		Color _color;
 		float _intensity, _umbraangle, _penumbraangle;
+		bool _enabled;
 	};
 
 	CMap *getCMap() {

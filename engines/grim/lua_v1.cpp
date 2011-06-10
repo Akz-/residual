@@ -544,7 +544,7 @@ void L1_IsActorInSector() {
 	int numSectors = g_grim->getCurrScene()->getSectorCount();
 	for (int i = 0; i < numSectors; i++) {
 		Sector *sector = g_grim->getCurrScene()->getSectorBase(i);
-		if (strmatch(sector->getName(), name)) {
+		if (strstr(sector->getName(), name)) {
 			if (sector->isPointInSector(actor->getPos())) {
 				lua_pushnumber(sector->getSectorId());
 				lua_pushstring(sector->getName());
@@ -576,7 +576,7 @@ void L1_IsPointInSector() {
 	int numSectors = g_grim->getCurrScene()->getSectorCount();
 	for (int i = 0; i < numSectors; i++) {
 		Sector *sector = g_grim->getCurrScene()->getSectorBase(i);
-		if (strmatch(sector->getName(), name)) {
+		if (strstr(sector->getName(), name)) {
 			if (sector->isPointInSector(pos)) {
 				lua_pushnumber(sector->getSectorId());
 				lua_pushstring(sector->getName());
@@ -607,12 +607,21 @@ void L1_GetSectorOppositeEdge() {
 	for (int i = 0; i < numSectors; i++) {
 		Sector *sector = g_grim->getCurrScene()->getSectorBase(i);
 		if (strmatch(sector->getName(), name)) {
+			if (sector->getNumVertices() != 4)
+				warning("GetSectorOppositeEdge(): cheat box with %d (!= 4) edges!", sector->getNumVertices());
+			Graphics::Vector3d* vertices = sector->getVertices();
 			Sector::ExitInfo e;
-			sector->getExitInfo(actor->getPos(), actor->getPuckVector(), &e);
 
-			lua_pushnumber(e.exitPoint.x());
-			lua_pushnumber(e.exitPoint.y());
-			lua_pushnumber(e.exitPoint.z());
+			sector->getExitInfo(actor->getPos(), -actor->getPuckVector(), &e);
+			float frac = (e.exitPoint - vertices[e.edgeVertex + 1]).magnitude() / e.edgeDir.magnitude();
+			e.edgeVertex -= 2;
+			if (e.edgeVertex < 0)
+				e.edgeVertex += sector->getNumVertices();
+			Graphics::Vector3d edge = vertices[e.edgeVertex + 1] - vertices[e.edgeVertex];
+			Graphics::Vector3d p = vertices[e.edgeVertex] + edge * frac;
+			lua_pushnumber(p.x());
+			lua_pushnumber(p.y());
+			lua_pushnumber(p.z());
 
 			return;
 		}
@@ -723,6 +732,30 @@ void L1_GetCurrentSetup() {
 	lua_pushnumber(scene->getSetup());
 }
 
+/* This function makes the walkplane sectors smaller by the
+ * given size. This is used when manny is holding some big
+ * thing, like his scythe, that is likely to clip with the
+ * things around him. The sectors are still connected, but they
+ * have a margin which prevents manny to go too close to the
+ * sectors edges.
+ */
+void L1_ShrinkBoxes() {
+	lua_Object sizeObj = lua_getparam(1);
+
+	if (lua_isnumber(sizeObj)) {
+		float size = lua_getnumber(sizeObj);
+		g_grim->getCurrScene()->shrinkBoxes(size);
+	}
+}
+
+void L1_UnShrinkBoxes() {
+	g_grim->getCurrScene()->unshrinkBoxes();
+}
+
+/* Given a position and a size this function calculates and pushes
+ * the nearest point to that which will be valid if the boxes are
+ * shrunk by the amount specified.
+ */
 void L1_GetShrinkPos() {
 	lua_Object xObj = lua_getparam(1);
 	lua_Object yObj = lua_getparam(2);
@@ -739,12 +772,21 @@ void L1_GetShrinkPos() {
 	Graphics::Vector3d pos;
 	pos.set(x, y, z);
 
+	Sector* sector;
+	g_grim->getCurrScene()->shrinkBoxes(r);
+	g_grim->getCurrScene()->findClosestSector(pos, &sector, &pos);
+	g_grim->getCurrScene()->unshrinkBoxes();
+
 	// TODO
 	//UnShrinkBoxes();
 	// lua_pusnumber 1, 2, 3 or lua_pushnil
-	lua_pushnumber(x);
-	lua_pushnumber(y);
-	lua_pushnumber(z);
+	if (sector) {
+		lua_pushnumber(pos.x());
+		lua_pushnumber(pos.y());
+		lua_pushnumber(pos.z());
+	} else {
+		lua_pushnil();
+	}
 
 	warning("Stub function GetShrinkPos(%g,%g,%g,%g) called", x, y, z, r);
 }
@@ -1127,6 +1169,18 @@ void L1_SetLightPosition() {
 	}
 }
 
+void L1_TurnLightOn() {
+	lua_Object lightObj = lua_getparam(1);
+
+	Scene *scene = g_grim->getCurrScene();
+	bool isOn = getbool(2);
+	if (lua_isnumber(lightObj)) {
+		scene->setLightEnabled((int)lua_getnumber(lightObj), isOn);
+	} else if (lua_isstring(lightObj)) {
+		scene->setLightEnabled(lua_getstring(lightObj), isOn);
+	}
+}
+
 void L1_LightMgrStartup() {
 	// we will not implement this opcode
 }
@@ -1242,8 +1296,6 @@ static void stubWarning(const char *funcName) {
 #define STUB_FUNC(name) void name() { stubWarning(#name); }
 STUB_FUNC(L1_SetActorInvClipNode)
 STUB_FUNC(L1_NukeResources)
-STUB_FUNC(L1_UnShrinkBoxes)
-STUB_FUNC(L1_ShrinkBoxes)
 STUB_FUNC(L1_ResetTextures)
 STUB_FUNC(L1_AttachToResources)
 STUB_FUNC(L1_DetachFromResources)
@@ -1254,7 +1306,6 @@ STUB_FUNC(L1_SetActorClipActive)
 STUB_FUNC(L1_SetActorCollisionScale)
 STUB_FUNC(L1_SetActorCollisionMode)
 STUB_FUNC(L1_FlushControls)
-STUB_FUNC(L1_TurnLightOn)
 STUB_FUNC(L1_GetCameraLookVector)
 STUB_FUNC(L1_SetCameraRoll)
 STUB_FUNC(L1_SetCameraInterest)
@@ -1268,7 +1319,6 @@ STUB_FUNC(L1_SetActorRoll)
 STUB_FUNC(L1_SetActorFrustrumCull)
 STUB_FUNC(L1_DriveActorTo)
 STUB_FUNC(L1_GetActorRect)
-STUB_FUNC(L1_SetActorTimeScale)
 STUB_FUNC(L1_GetTranslationMode)
 STUB_FUNC(L1_SetTranslationMode)
 STUB_FUNC(L1_WalkActorToAvoiding)

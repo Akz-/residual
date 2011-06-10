@@ -49,7 +49,6 @@ enum enDebugLevels {
 	DEBUG_SMUSH, DEBUG_IMUSE, DEBUG_CHORES, DEBUG_ALL
 };
 
-#define ENGINE_MODE_IDLE	0
 #define ENGINE_MODE_PAUSE	1
 #define ENGINE_MODE_NORMAL	2
 #define ENGINE_MODE_SMUSH	3
@@ -262,7 +261,7 @@ private:
 	unsigned int _frameTimeCollection;
 	int _prevSmushFrame;
 	unsigned int _frameCounter;
-	unsigned int _timeAccum;
+	unsigned int _lastFrameTime;
 	unsigned _speedLimitMs;
 	bool _showFps;
 	bool _softRenderer;
