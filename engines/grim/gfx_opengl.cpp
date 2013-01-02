@@ -327,11 +327,10 @@ void GfxOpenGL::getBoundingBoxPos(const Mesh *model, int *x1, int *y1, int *x2, 
 
 		for (int j = 0; j < model->_faces[i]._numVertices; j++) {
 			GLdouble modelView[16], projection[16];
-			GLint viewPort[4];
+			GLint viewPort[4] = {0, 0, _gameWidth, _gameHeight};
 
 			glGetDoublev(GL_MODELVIEW_MATRIX, modelView);
 			glGetDoublev(GL_PROJECTION_MATRIX, projection);
-			glGetIntegerv(GL_VIEWPORT, viewPort);
 
 			pVertices = model->_vertices + 3 * model->_faces[i]._vertices[j];
 
@@ -786,6 +785,9 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 					int b = pixel & 0x1f;
 					texDataPtr[2] = (b << 3) | (b >> 2);
 					if (pixel == 0xf81f) { // transparent
+						texDataPtr[0] = 0;
+						texDataPtr[1] = 0;
+						texDataPtr[2] = 0;
 						texDataPtr[3] = 0;
 						bitmap->_hasTransparency = true;
 					} else {
@@ -802,10 +804,15 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 
 			for (int i = 0; i < bitmap->_numTex; i++) {
 				glBindTexture(GL_TEXTURE_2D, textures[bitmap->_numTex * pic + i]);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+				if (bitmap->_format == 1) {
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				} else {
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				}
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexImage2D(GL_TEXTURE_2D, 0, format, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, format, type, NULL);
 			}
 
@@ -909,7 +916,7 @@ void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, bool initialDra
 	// For now, just keep this here :-)
 	if (bitmap->getFormat() == 1 && bitmap->getHasTransparency()) {
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	} else {
 		glDisable(GL_BLEND);
 	}
@@ -1070,10 +1077,10 @@ void GfxOpenGL::createFont(Font *font) {
 
 	}
 	glBindTexture(GL_TEXTURE_2D, texture[0]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size * charsWide, size * charsHigh, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp);
 
 	delete[] data;
@@ -1134,8 +1141,8 @@ void GfxOpenGL::drawTextObject(const TextObject *text) {
 			z *= _scaleW;
 			w *= _scaleH;
 			glBindTexture(GL_TEXTURE_2D, texture);
-			float width = 1 / 16.f;
-			float cx = ((character - 1) % 16) / 16.0f;
+			float width = 1 / 16.f - 0.002;
+			float cx = ((character - 1) % 16) / 16.0f + 0.001;
 			float cy = ((character - 1) / 16) / 16.0f;
 			glBegin(GL_QUADS);
 			glTexCoord2f(cx, cy);
@@ -1282,10 +1289,10 @@ void GfxOpenGL::prepareMovieFrame(Graphics::Surface* frame) {
 	glGenTextures(_smushNumTex, _smushTexIds);
 	for (int i = 0; i < _smushNumTex; i++) {
 		glBindTexture(GL_TEXTURE_2D, _smushTexIds[i]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BITMAP_TEXTURE_SIZE, BITMAP_TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
 	}
 
