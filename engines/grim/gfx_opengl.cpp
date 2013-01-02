@@ -1346,11 +1346,11 @@ void GfxOpenGL::drawMovieFrame(int offsetX, int offsetY) {
 			glBegin(GL_QUADS);
 			glTexCoord2f(0, 0);
 			glVertex2f(x + offsetX, y + offsetY);
-			glTexCoord2f(1.0f, 0.0f);
+			glTexCoord2f(0.999f, 0.0001f);
 			glVertex2f(x + offsetX + BITMAP_TEXTURE_SIZE * _scaleW, y + offsetY);
-			glTexCoord2f(1.0f, 1.0f);
+			glTexCoord2f(0.999f, 0.999f);
 			glVertex2f(x + offsetX + BITMAP_TEXTURE_SIZE * _scaleW, y + offsetY + BITMAP_TEXTURE_SIZE * _scaleH);
-			glTexCoord2f(0.0f, 1.0f);
+			glTexCoord2f(0.001f, 0.999f);
 			glVertex2f(x + offsetX, y + offsetY + BITMAP_TEXTURE_SIZE * _scaleH);
 			glEnd();
 			curTexIdx++;
