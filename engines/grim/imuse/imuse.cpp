@@ -32,6 +32,8 @@
 #include "audio/mixer.h"
 #include "audio/decoders/raw.h"
 
+#include "engines/grim/imuse/freeverb/revmodel.hpp"
+
 namespace Grim {
 
 Imuse *g_imuse = NULL;
@@ -41,6 +43,8 @@ extern ImuseTable grimStateMusicTable[];
 extern ImuseTable grimSeqMusicTable[];
 extern ImuseTable grimDemoStateMusicTable[];
 extern ImuseTable grimDemoSeqMusicTable[];
+
+Freeverb::revmodel reverbModel;
 
 void Imuse::timerHandler(void *refCon) {
 	Imuse *imuse = (Imuse *)refCon;
@@ -299,6 +303,29 @@ void Imuse::callback() {
 
 				if (result > mixer_size)
 					result = mixer_size;
+
+				if (track->volGroupId == IMUSE_VOLGRP_VOICE) {
+					int reverbSize = result / 2;
+					float* fLeft = new float[reverbSize];
+					float* fRight = new float[reverbSize];
+
+					int16* samples = (int16 *)data;
+					for (int i = 0; i < result / 2; ++i) {
+						int16 sample = FROM_BE_16(samples[i]);
+						fLeft[i] = sample / 32768.0f;
+						fRight[i] = sample / 32768.0f;
+					}
+
+					reverbModel.processreplace(fLeft, fRight, fLeft, fRight, reverbSize, 1);
+
+					int16* pos = (int16 *)data;
+					for (int i = 0; i < reverbSize; ++i) {
+						*pos++ = TO_BE_16((fLeft[i] * 32768.0f));
+					}
+
+					delete[] fLeft;
+					delete[] fRight;
+				}
 
 				if (g_system->getMixer()->isReady()) {
 					track->stream->queueBuffer(data, result, DisposeAfterUse::YES, makeMixerFlags(track->mixerFlags));
