@@ -28,6 +28,10 @@
 #include "engines/grim/imuse/imuse_sndmgr.h"
 #include "engines/grim/imuse/imuse_mcmp_mgr.h"
 
+#include "engines/grim/imuse/freeverb/revmodel.hpp"
+
+Freeverb::revmodel reverbModel;
+
 namespace Grim {
 
 ImuseSndMgr::ImuseSndMgr(bool demo) {
@@ -185,6 +189,11 @@ ImuseSndMgr::SoundDesc *ImuseSndMgr::openSound(const char *soundName, int volGro
 	strcpy(sound->name, soundName);
 	sound->volGroupId = volGroupId;
 	sound->inStream = NULL;
+
+	if (volGroupId == IMUSE_VOLGRP_VOICE)
+		sound->reverbDelaySize = 11025;
+	else
+		sound->reverbDelaySize = 0;
 
 	sound->inStream = g_resourceloader->openNewStreamFile(soundName);
 	if (!sound->inStream) {
@@ -347,8 +356,38 @@ int32 ImuseSndMgr::getDataFromRegion(SoundDesc *sound, int region, byte **buf, i
 	int32 region_length = sound->region[region].length;
 
 	if (offset + size > region_length) {
-		size = region_length - offset;
-		sound->endFlag = true;
+		if (region + 1 == sound->numRegions && sound->reverbDelaySize != 0) {
+			if (size > sound->reverbDelaySize) {
+				sound->endFlag = true;
+				size = sound->reverbDelaySize;
+			} else {
+				sound->endFlag = false;
+			}
+			int samples = size / 2;
+			float* fLeft = new float[samples];
+			float* fRight = new float[samples];
+
+			memset(fLeft, 0, sizeof(float) * samples);
+			memset(fRight, 0, sizeof(float) * samples);
+
+			int16* data = new int16[samples];
+			*buf = (byte *)data;
+
+			reverbModel.processreplace(fLeft, fRight, fLeft, fRight, samples, 1);
+
+			int16* pos = data;
+			for (int i = 0; i < samples; ++i) {
+				*pos++ = TO_BE_16((fLeft[i] * 32768.0f));
+			}
+
+			delete[] fLeft;
+			delete[] fRight;
+			sound->reverbDelaySize -= samples * 2;
+			return samples * 2;
+		} else {
+			size = region_length - offset;
+			sound->endFlag = true;
+		}
 	} else {
 		sound->endFlag = false;
 	}
@@ -359,6 +398,29 @@ int32 ImuseSndMgr::getDataFromRegion(SoundDesc *sound, int region, byte **buf, i
 		*buf = (byte *)malloc(sizeof(byte) * size);
 		sound->inStream->seek(region_offset + offset + sound->headerSize, SEEK_SET);
 		sound->inStream->read(*buf, size);
+	}
+
+	if (sound->volGroupId == IMUSE_VOLGRP_VOICE) {
+		int reverbSize = size / 2;
+		float* fLeft = new float[reverbSize];
+		float* fRight = new float[reverbSize];
+
+		int16* samples = (int16 *)*buf;
+		for (int i = 0; i < reverbSize; ++i) {
+			int16 sample = FROM_BE_16(samples[i]);
+			fLeft[i] = sample / 32768.0f;
+			fRight[i] = sample / 32768.0f;
+		}
+
+		reverbModel.processreplace(fLeft, fRight, fLeft, fRight, reverbSize, 1);
+
+		int16* pos = samples;
+		for (int i = 0; i < reverbSize; ++i) {
+			*pos++ = TO_BE_16((fLeft[i] * 32768.0f));
+		}
+
+		delete[] fLeft;
+		delete[] fRight;
 	}
 
 	return size;

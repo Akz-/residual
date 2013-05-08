@@ -78,10 +78,10 @@ void revmodel::processreplace(float *inputL, float *inputR, float *outputL, floa
 	float outL,outR,input;
 
 	setwet(1.0f/8);
-	setroomsize(0.6);
-	setdry(1.0f);
-	setdamp(0.2);
-	setwidth(initialwidth);
+	setroomsize(0.02);
+	setdry(0.6f);
+	setdamp(0.9);
+	setwidth(2);
 	setmode(initialmode);
 
 	while(numsamples-- > 0)
@@ -201,7 +201,7 @@ void revmodel::update()
 
 void revmodel::setroomsize(float value)
 {
-	roomsize = (value*scaleroom) + offsetroom;
+	roomsize = (value*scaleroom);
 	update();
 }
 

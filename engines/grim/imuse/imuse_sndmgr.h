@@ -76,6 +76,7 @@ public:
 		int volGroupId;
 		bool mcmpData;
 		uint32 headerSize;
+		int reverbDelaySize;
 		Common::SeekableReadStream *inStream;
 	};
 
