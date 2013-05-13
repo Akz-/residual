@@ -24,36 +24,39 @@ const float initialdry		= 0.5;
 const float initialwidth	= 1.0f;
 const float initialmode		= 0;
 const float freezemode		= 0.5f;
-const int	stereospread	= 23/2;
+
+const int div = 2;
+
+const int	stereospread	= 23/div;
 
 // These values assume 44.1KHz sample rate
 // they will probably be OK for 48KHz sample rate
 // but would need scaling for 96KHz (or other) sample rates.
 // The values were obtained by listening tests.
-const int combtuningL1		= 1116/2;
-const int combtuningR1		= 1116/2+stereospread;
-const int combtuningL2		= 1188/2;
-const int combtuningR2		= 1188/2+stereospread;
-const int combtuningL3		= 1277/2;
-const int combtuningR3		= 1277/2+stereospread;
-const int combtuningL4		= 1356/2;
-const int combtuningR4		= 1356/2+stereospread;
-const int combtuningL5		= 1422/2;
-const int combtuningR5		= 1422/2+stereospread;
-const int combtuningL6		= 1491/2;
-const int combtuningR6		= 1491/2+stereospread;
-const int combtuningL7		= 1557/2;
-const int combtuningR7		= 1557/2+stereospread;
-const int combtuningL8		= 1617/2;
-const int combtuningR8		= 1617/2+stereospread;
-const int allpasstuningL1	= 556/2;
-const int allpasstuningR1	= 556/2+stereospread;
-const int allpasstuningL2	= 441/2;
-const int allpasstuningR2	= 441/2+stereospread;
-const int allpasstuningL3	= 341/2;
-const int allpasstuningR3	= 341/2+stereospread;
-const int allpasstuningL4	= 225/2;
-const int allpasstuningR4	= 225/2+stereospread;
+const int combtuningL1		= 1116/div;
+const int combtuningR1		= 1116/div+stereospread;
+const int combtuningL2		= 1188/div;
+const int combtuningR2		= 1188/div+stereospread;
+const int combtuningL3		= 1277/div;
+const int combtuningR3		= 1277/div+stereospread;
+const int combtuningL4		= 1356/div;
+const int combtuningR4		= 1356/div+stereospread;
+const int combtuningL5		= 1422/div;
+const int combtuningR5		= 1422/div+stereospread;
+const int combtuningL6		= 1491/div;
+const int combtuningR6		= 1491/div+stereospread;
+const int combtuningL7		= 1557/div;
+const int combtuningR7		= 1557/div+stereospread;
+const int combtuningL8		= 1617/div;
+const int combtuningR8		= 1617/div+stereospread;
+const int allpasstuningL1	= 556/div;
+const int allpasstuningR1	= 556/div+stereospread;
+const int allpasstuningL2	= 441/div;
+const int allpasstuningR2	= 441/div+stereospread;
+const int allpasstuningL3	= 341/div;
+const int allpasstuningR3	= 341/div+stereospread;
+const int allpasstuningL4	= 225/div;
+const int allpasstuningR4	= 225/div+stereospread;
 
 }
 

@@ -4,6 +4,7 @@
 // http://www.dreampoint.co.uk
 // This code is public domain
 
+#include "common/math.h"
 #include "revmodel.hpp"
 
 using namespace Freeverb;
@@ -73,24 +74,106 @@ void revmodel::mute()
 	}
 }
 
+inline float highpass(float input, float dt, float rc)
+{
+	static float prevDry = 0.0f;
+	static float prevWet = 0.0f;
+
+	float alpha = rc / (rc + dt);
+	float output = alpha * (prevWet + input - prevDry);
+	prevWet = output;
+	prevDry = input;
+	return output;
+}
+
+inline float lowpass(float input, float dt, float rc)
+{
+	static float prevWet = 0.0f;
+
+	float alpha = dt / (rc + dt);
+	float output = prevWet + alpha * (input - prevWet);
+	prevWet = output;
+	return output;
+}
+
+inline float intercom(float input, const float a[], const float b[])
+{
+	static float xv[2];
+	static float yv[2];
+
+	xv[2] = xv[1];
+	xv[1] = xv[0];
+	xv[0] = input;
+
+	yv[2] = yv[1];
+	yv[1] = yv[0];
+
+	yv[0] = b[2] * xv[2]
+	      + b[1] * xv[1]
+		  + b[0] * xv[0]
+		  - a[2] * yv[2]
+		  - a[1] * yv[1];
+
+	return yv[0];
+}
+
 void revmodel::processreplace(float *inputL, float *inputR, float *outputL, float *outputR, long numsamples, int skip)
 {
 	float outL,outR,input;
 
-	setwet(1.0f/8);
-	setroomsize(0.02);
-	setdry(0.6f);
+	//setwet(1.0f/8);
+	//setroomsize(0.75f);
+	//setdry(1.0f);
+	//setdamp(0.2);
+	//setwidth(initialwidth);
+	//setmode(initialmode);
+
+	setwet(1.0f/2);
+	setroomsize(0.2f - 0.7);
+	setdry(0.5f);
 	setdamp(0.9);
-	setwidth(2);
-	setmode(initialmode);
+	setwidth(initialwidth);
+
+	float f1 = 1326.0f / 22050.0f;
+	float f2 = 4326.0f / 22050.0f;
+	float t = 1 / 2.0f;
+
+	f1 = 2 * M_PI * f1;
+	f2 = 2 * M_PI * f2;
+	f1 = 2/t * tan(f1 * t/2);
+	f2 = 2/t * tan(f2 * t/2);
+
+	float bw = f2 - f1;
+	float center = sqrt(f1 * f2);
+
+	float v1 = 2 * bw * t;
+	float v2 = center * center * t * t;
+
+	float a1 = v1 + v2 + 4;
+
+	float b[] = {v1 / a1, 0, -v1 / a1};
+	float a[] = {1, (2 * v2 - 8) / a1, (v2 - v1 + 4) / a1};
 
 	while(numsamples-- > 0)
 	{
 		outL = outR = 0;
-		input = (*inputL + *inputR) * gain;
+		input = (*inputL + *inputR) * 0.5;
+
+		float rc = 1 / (2 * 3.14159265f * 200.0f);
+		float dt = 1 / 22050.0f;
+		
+		rc = 1 / (2 * 3.14159265f * 500.0f);
+		float o1 = highpass(input, dt, rc);
+		//input = lowpass(input, dt, rc) * 1;
+		o1 = o1 * 2.0;
+
+		rc = 1 / (2 * 3.14159265f * 326.0f);
+		float o2 = lowpass(input, dt, rc);
+
+		input = intercom(*inputL, a, b) * 1.5;
 
 		// Accumulate comb filters in parallel
-		for(int i=0; i<numcombs; i++)
+		/*for(int i=0; i<8; i++)
 		{
 			outL += combL[i].process(input);
 			outR += combR[i].process(input);
@@ -101,11 +184,11 @@ void revmodel::processreplace(float *inputL, float *inputR, float *outputL, floa
 		{
 			outL = allpassL[i].process(outL);
 			outR = allpassR[i].process(outR);
-		}
+		}*/
 
 		// Calculate output REPLACING anything already there
-		*outputL = outL*wet1 + outR*wet2 + *inputL*dry;
-		*outputR = outR*wet1 + outL*wet2 + *inputR*dry;
+		*outputL = input;
+		*outputR = input;
 
 		if (*outputL > 1)
 			*outputL = 0.999f;
@@ -201,7 +284,7 @@ void revmodel::update()
 
 void revmodel::setroomsize(float value)
 {
-	roomsize = (value*scaleroom);
+	roomsize = (value*scaleroom) + offsetroom;
 	update();
 }
 

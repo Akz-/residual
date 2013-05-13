@@ -1084,7 +1084,7 @@ void Actor::sayLine(const char *msgId, bool background) {
 		// if there is no costume probably the character is drawn by a smush movie, so
 		// we don't want to go out of sync with it.
 		if (getCurrentCostume()) {
-			_talkDelay = 500;
+			_talkDelay = 0;
 		}
 		if (g_sound->startVoice(_talkSoundName.c_str()) && g_grim->getCurrSet()) {
 			g_grim->getCurrSet()->setSoundPosition(_talkSoundName.c_str(), _pos);

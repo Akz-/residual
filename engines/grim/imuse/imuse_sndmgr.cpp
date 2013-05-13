@@ -191,7 +191,7 @@ ImuseSndMgr::SoundDesc *ImuseSndMgr::openSound(const char *soundName, int volGro
 	sound->inStream = NULL;
 
 	if (volGroupId == IMUSE_VOLGRP_VOICE)
-		sound->reverbDelaySize = 11025;
+		sound->reverbDelaySize = 22050;
 	else
 		sound->reverbDelaySize = 0;
 
