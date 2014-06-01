@@ -82,7 +82,7 @@ void EMIMeshComponent::draw() {
 	// with the setup of the parent
 	//translateObject(false);
 
-	_obj->draw();
+	_obj->draw(_cost->getMatrix());
 
 	// Need to un-translate when done
 	//translateObject(true);

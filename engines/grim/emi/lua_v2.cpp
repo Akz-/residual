@@ -293,7 +293,17 @@ void Lua_V2::EngineDisplay() {
 }
 
 void Lua_V2::SetAmbientLight() {
-	// dummy
+	int mode = (int)lua_getnumber(lua_getparam(1));
+	if (mode == 0) {
+		if (g_grim->getCurrSet()) {
+			g_grim->getCurrSet()->setLightEnableState(true);
+		}
+	}
+	else if (mode == 1) {
+		if (g_grim->getCurrSet()) {
+			g_grim->getCurrSet()->setLightEnableState(false);
+		}
+	}
 }
 
 void Lua_V2::Display() {

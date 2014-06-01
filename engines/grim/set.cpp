@@ -452,26 +452,20 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	data->read(name, 32);
 	_name = name;
 
-	// All guesses.
 	data->read(&_pos.x(), 4);
 	data->read(&_pos.y(), 4);
 	data->read(&_pos.z(), 4);
-	data->read(&_dir.x(), 4);
-	data->read(&_dir.y(), 4);
-	data->read(&_dir.z(), 4);
-	data->read(&_intensity, 4);
+	data->read(&_quat.x(), 4);
+	data->read(&_quat.y(), 4);
+	data->read(&_quat.z(), 4);
+	data->read(&_quat.w(), 4);
 
 	// This relies on the order of the LightType enum, which might not be correct.
 	// The order should only affect EMI, and not Grim.
 	_type = (LightType)data->readSint32LE();
 
-	if (_type == UnknownLight) {
-		warning("light %s using UnkownLight", name);
-	}
+	data->read(&_intensity, 4);
 
-	// No ideas for these two.
-	float i;
-	data->read(&i, 4);
 	int j = data->readSint32LE();
 	// This always seems to be 0
 	if (j != 0) {
@@ -482,10 +476,10 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	_color.getGreen() = data->readSint32LE();
 	_color.getBlue() = data->readSint32LE();
 
-	//Don't know what any of these do.
-	float n, o, p, q;
-	data->read(&n, 4);
-	data->read(&o, 4);
+	data->read(&_falloffNear, 4);
+	data->read(&_falloffFar, 4);
+
+	float p, q;
 	data->read(&p, 4);
 	data->read(&q, 4);
 
