@@ -172,7 +172,6 @@ public:
 	Common::String _name;
 	LightType _type;
 	Math::Vector3d _pos, _dir;
-	Math::Quaternion _quat;
 	Color _color;
 	float _intensity, _umbraangle, _penumbraangle, _falloffNear, _falloffFar;
 	bool _enabled;

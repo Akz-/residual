@@ -242,22 +242,16 @@ void EMIModel::setSkeleton(Skeleton *skel) {
 void EMIModel::prepareForRender() {
 	if (!_skeleton || !_vertexBoneInfo)
 		return;
+
 	for (int i = 0; i < _numVertices; i++) {
 		_drawVertices[i] = _vertices[i];
 		_drawNormals[i] = _normals[i];
 		int animIndex = _vertexBoneInfo[_vertexBone[i]];
 		_skeleton->_joints[animIndex]._finalMatrix.transform(_drawVertices + i, true);
-
-		Math::Matrix4 inv = _skeleton->_joints[animIndex]._absMatrix;
-		inv.invertAffineOrthonormal();
-		Math::Matrix4 anim = _skeleton->_joints[animIndex]._finalMatrix * inv;
-
-		Math::Matrix4 normalMatrix = anim;
-		normalMatrix.invertAffineOrthonormal();
-		normalMatrix.transpose();
-		
-		normalMatrix.transform(_drawNormals + i, false);
+		_skeleton->_joints[animIndex]._absMatrix.inverseRotate(_drawNormals + i);
+		_skeleton->_joints[animIndex]._finalMatrix.transform(_drawNormals + i, false);
 	}
+
 	g_driver->updateEMIModel(this);
 }
 
@@ -317,9 +311,7 @@ void EMIModel::updateLighting(const Math::Matrix4 &matrix) {
 			Math::Vector3d dir;
 
 			if (l->_type == Light::Direct) {
-				dir.set(0, 0, -1);
-				Math::Matrix4 r = l->_quat.toMatrix();
-				r.transform(&dir, false);
+				dir = l->_dir;
 			} else {
 				dir = l->_pos - vertex;
 			}

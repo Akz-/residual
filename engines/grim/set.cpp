@@ -457,10 +457,16 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 	data->read(&_pos.x(), 4);
 	data->read(&_pos.y(), 4);
 	data->read(&_pos.z(), 4);
-	data->read(&_quat.x(), 4);
-	data->read(&_quat.y(), 4);
-	data->read(&_quat.z(), 4);
-	data->read(&_quat.w(), 4);
+
+	Math::Quaternion quat;
+	data->read(&quat.x(), 4);
+	data->read(&quat.y(), 4);
+	data->read(&quat.z(), 4);
+	data->read(&quat.w(), 4);
+
+	_dir.set(0, 0, -1);
+	Math::Matrix4 rot = quat.toMatrix();
+	rot.transform(&_dir, false);
 
 	// This relies on the order of the LightType enum, which might not be correct.
 	// The order should only affect EMI, and not Grim.
@@ -480,10 +486,8 @@ void Light::loadBinary(Common::SeekableReadStream *data) {
 
 	data->read(&_falloffNear, 4);
 	data->read(&_falloffFar, 4);
-
-	float p, q;
-	data->read(&p, 4);
-	data->read(&q, 4);
+	data->read(&_umbraangle, 4);
+	data->read(&_penumbraangle, 4);
 
 	_enabled = true;
 }
@@ -574,6 +578,12 @@ public:
 };
 
 void Set::setupLights(const Math::Vector3d &pos) {
+	if (g_grim->getGameType() == GType_MONKEY4) {
+		// Currently we do lighting in software for EMI.
+		g_driver->disableLights();
+		return;
+	}
+
 	if (!_enableLights) {
 		g_driver->disableLights();
 		return;

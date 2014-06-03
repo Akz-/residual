@@ -667,8 +667,12 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 			glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
 		}
 		
-		Math::Vector3d l = model->_lighting[index];
-		glColor4ub((byte)(model->_colorMap[index].r * l.x() * dim), (byte)(model->_colorMap[index].g * l.y() * dim), (byte)(model->_colorMap[index].b * l.z() * dim), (int)(model->_colorMap[index].a * _alpha));
+		Math::Vector3d lighting = model->_lighting[index];
+		byte r = (byte)(model->_colorMap[index].r * lighting.x() * dim);
+		byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
+		byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
+		byte a = (int)(model->_colorMap[index].a * _alpha);
+		glColor4ub(r, g, b, a);
 
 		Math::Vector3d normal = model->_normals[index];
 		Math::Vector3d vertex = model->_drawVertices[index];
