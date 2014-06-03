@@ -274,6 +274,11 @@ void EMIModel::prepareTextures() {
 
 void EMIModel::draw(const Math::Matrix4 &matrix) {
 	prepareForRender();
+
+	Math::AABB bounds = calculateWorldBounds(matrix);
+	if (bounds.isValid() && !g_grim->getCurrSet()->getFrustum().isInside(bounds))
+		return;
+
 	updateLighting(matrix);
 	// We will need to add a call to the skeleton, to get the modified vertices, but for now,
 	// I'll be happy with just static drawing
@@ -360,6 +365,14 @@ void EMIModel::getBoundingBox(int *x1, int *y1, int *x2, int *y2) const {
 	}
 }
 
+Math::AABB EMIModel::calculateWorldBounds(const Math::Matrix4 &matrix) const {
+	Math::AABB bounds;
+	for (int i = 0; i < _numVertices; i++) {
+		bounds.expand(_drawVertices[i]);
+	}
+	bounds.transform(matrix);
+	return bounds;
+}
 
 EMIModel::EMIModel(const Common::String &filename, Common::SeekableReadStream *data, EMICostume *costume) :
 		_fname(filename), _costume(costume) {
