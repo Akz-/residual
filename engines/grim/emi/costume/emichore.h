@@ -32,6 +32,7 @@ namespace Grim {
 
 class EMIChore : public PoolObject<EMIChore>, public Chore {
 public:
+	EMIChore();
 	EMIChore(char name[32], int id, Costume *owner, int length, int numTracks);
 	static int32 getStaticTag() { return MKTAG('C', 'H', 'O', 'R'); }
 
@@ -46,6 +47,8 @@ public:
 	EMISkelComponent *getSkeleton() { return _skeleton; }
 
 private:
+	friend class EMICostume;
+
 	Animation::FadeMode _fadeMode;
 	float _fade;
 	float _startFade;

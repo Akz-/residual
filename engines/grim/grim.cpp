@@ -48,6 +48,7 @@
 #include "engines/grim/lua_v1.h"
 #include "engines/grim/emi/poolsound.h"
 #include "engines/grim/emi/layer.h"
+#include "engines/grim/emi/costume/emichore.h"
 #include "engines/grim/actor.h"
 #include "engines/grim/movie/movie.h"
 #include "engines/grim/savegame.h"
@@ -842,6 +843,14 @@ void GrimEngine::savegameRestore() {
 	PrimitiveObject::getPool().restoreObjects(_savedState);
 	Debug::debug(Debug::Engine, "PrimitiveObjects restored successfully.");
 
+	if (getGameType() == GType_MONKEY4) {
+		EMIChore::Pool &pool = EMIChore::getPool();
+		EMIChore::getPool().restoreObjects(_savedState);
+		Debug::debug(Debug::Engine, "EMI chores restored successfully.");
+
+		warning("%d\n", pool.getSize());
+	}
+
 	Actor::getPool().restoreObjects(_savedState);
 	Debug::debug(Debug::Engine, "Actors restored successfully.");
 
@@ -1004,6 +1013,11 @@ void GrimEngine::savegameSave() {
 
 	PrimitiveObject::getPool().saveObjects(_savedState);
 	Debug::debug(Debug::Engine, "PrimitiveObjects saved successfully.");
+	
+	if (getGameType() == GType_MONKEY4) {
+		EMIChore::getPool().saveObjects(_savedState);
+		Debug::debug(Debug::Engine, "EMI chores saved successfully.");
+	}
 
 	Actor::getPool().saveObjects(_savedState);
 	Debug::debug(Debug::Engine, "Actors saved successfully.");

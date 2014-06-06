@@ -25,9 +25,13 @@
 
 namespace Grim {
 
+EMIChore::EMIChore() : Chore(nullptr, 0, nullptr, 0, 0), _mesh(nullptr), _skeleton(nullptr),
+	_fadeMode(Animation::None), _fade(1.f), _fadeLength(0), _startFade(1.0f), PoolObject() {
+}
+
 EMIChore::EMIChore(char name[32], int id, Costume *owner, int length, int numTracks) :
 		Chore(name, id, owner, length, numTracks), _mesh(nullptr), _skeleton(nullptr),
-		_fadeMode(Animation::None), _fade(1.f), _fadeLength(0), _startFade(1.0f) {
+		_fadeMode(Animation::None), _fade(1.f), _fadeLength(0), _startFade(1.0f), PoolObject() {
 }
 
 void EMIChore::addComponent(Component *component) {

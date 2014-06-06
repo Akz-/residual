@@ -198,7 +198,6 @@ void Costume::load(Common::SeekableReadStream *data) {
 
 Costume::~Costume() {
 	if (_chores) {
-		stopChores();
 		for (int i = _numComponents - 1; i >= 0; i--) {
 			delete _components[i];
 		}

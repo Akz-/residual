@@ -40,6 +40,7 @@ class Material;
 class EMICostume : public Costume {
 public:
 	EMICostume(const Common::String &filename, Costume *prevCost);
+	~EMICostume();
 
 	void load(Common::SeekableReadStream *data) override;
 

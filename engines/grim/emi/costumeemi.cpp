@@ -23,6 +23,7 @@
 #include "common/endian.h"
 
 #include "engines/grim/debug.h"
+#include "engines/grim/colormap.h"
 #include "engines/grim/costume.h"
 #include "engines/grim/grim.h"
 #include "engines/grim/resource.h"
@@ -41,6 +42,13 @@ namespace Grim {
 
 EMICostume::EMICostume(const Common::String &fname, Costume *prevCost) :
 		Costume(fname, prevCost), _wearChore(nullptr), _emiSkel(nullptr) {
+}
+
+EMICostume::~EMICostume()
+{
+	// The chores are managed by a pool, so we don't want the base destructor
+	// to delete them.
+	_numChores = 0;
 }
 
 void EMICostume::load(Common::SeekableReadStream *data) {
@@ -225,7 +233,41 @@ int EMICostume::update(uint time) {
 }
 
 void EMICostume::saveState(SaveGame *state) const {
-	Costume::saveState(state);
+	if (_cmap) {
+		state->writeBool(true);
+		state->writeString(_cmap->getFilename());
+	}
+	else {
+		state->writeBool(false);
+	}
+
+	/*for (int i = 0; i < _numChores; ++i) {
+		_chores[i]->saveState(state);
+	}*/
+
+	for (int i = 0; i < _numComponents; ++i) {
+		Component *c = _components[i];
+
+		if (c) {
+			state->writeBool(c->_visible);
+			state->writeVector3d(c->_matrix.getPosition());
+			c->saveState(state);
+		}
+	}
+
+	for (int i = 0; i < _numChores; ++i) {
+		EMIChore *emiChore = (EMIChore*)_chores[i];
+		state->writeLESint32(emiChore->getId());
+	}
+
+	state->writeLEUint32(_playingChores.size());
+	for (Common::List<Chore*>::const_iterator i = _playingChores.begin(); i != _playingChores.end(); ++i) {
+		state->writeLESint32((*i)->getChoreId());
+	}
+
+	state->writeFloat(_lookAtRate);
+	_head->saveState(state);
+
 	Common::List<Material *>::const_iterator it = _materials.begin();
 	for (; it != _materials.end(); ++it) {
 		state->writeLESint32((*it)->getActiveTexture());
@@ -234,20 +276,86 @@ void EMICostume::saveState(SaveGame *state) const {
 }
 
 bool EMICostume::restoreState(SaveGame *state) {
-	bool ret = Costume::restoreState(state);
-	if (ret) {
-		Common::List<Material *>::const_iterator it = _materials.begin();
-		for (; it != _materials.end(); ++it) {
-			(*it)->setActiveTexture(state->readLESint32());
-		}
+	if (state->readBool()) {
+		Common::String str = state->readString();
+		setColormap(str);
+	}
 
-		int id = state->readLESint32();
-		if (id >= 0) {
-			EMIChore *chore = static_cast<EMIChore *>(_chores[id]);
-			setWearChore(chore);
+	/*for (int i = 0; i < _numChores; ++i) {
+		_chores[i]->restoreState(state);
+	}*/
+
+	for (int i = 0; i < _numComponents; ++i) {
+		Component *c = _components[i];
+
+		if (c) {
+			c->_visible = state->readBool();
+			c->_matrix.setPosition(state->readVector3d());
+			c->restoreState(state);
 		}
 	}
-	return ret;
+
+	for (int i = 0; i < _numChores; ++i) {
+		int id = state->readLESint32();
+		warning("%d\n", EMIChore::getPool().getSize());
+		EMIChore *chore = EMIChore::getPool().getObject(id);
+		assert(chore);
+
+		EMIChore *baseChore = (EMIChore*)_chores[i];
+
+		chore->_numTracks = baseChore->_numTracks;
+		chore->_length = baseChore->_length;
+		chore->_choreId = baseChore->_choreId;
+		chore->_owner = baseChore->_owner;
+		chore->_mesh = nullptr;
+		chore->_skeleton = nullptr;
+		if (chore->_tracks)
+			delete[] chore->_tracks;
+		chore->_tracks = new ChoreTrack[chore->_numTracks];
+		memcpy(chore->_name, baseChore->_name, 32);
+
+		for (int k = 0; k < baseChore->_numTracks; ++k) {
+			ChoreTrack &track = chore->_tracks[k];
+			ChoreTrack &baseTrack = baseChore->_tracks[k];
+			track.numKeys = baseTrack.numKeys;
+			track.keys = new TrackKey[track.numKeys];
+			track.component = baseTrack.component;
+			if (track.component)
+				chore->addComponent(track.component);
+			track.compID = -1; // -1 means "look at .component"
+
+			for (int j = 0; j < track.numKeys; j++) {
+				track.keys[j].time = baseTrack.keys[j].time;
+				track.keys[j].value = baseTrack.keys[j].value;
+			}
+		}
+
+		_chores[i] = chore;
+		delete baseChore;
+	}
+
+	int numPlayingChores = state->readLEUint32();
+	for (int i = 0; i < numPlayingChores; ++i) {
+		int id = state->readLESint32();
+		_playingChores.push_back(_chores[id]);
+	}
+
+	_lookAtRate = state->readFloat();
+	_head->restoreState(state);
+	_head->loadJoints(getModelNodes());
+
+	Common::List<Material *>::const_iterator it = _materials.begin();
+	for (; it != _materials.end(); ++it) {
+		(*it)->setActiveTexture(state->readLESint32());
+	}
+
+	int id = state->readLESint32();
+	if (id >= 0) {
+		EMIChore *chore = static_cast<EMIChore *>(_chores[id]);
+		setWearChore(chore);
+	}
+
+	return true;
 }
 
 Material *EMICostume::findMaterial(const Common::String &name) {

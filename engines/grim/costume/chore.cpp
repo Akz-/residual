@@ -35,7 +35,8 @@ Chore::Chore(char name[32], int id, Costume *owner, int length, int numTracks) :
 		_hasPlayed(false), _playing(false), _looping(false), _paused(false), _currTime(-1),
 		_numTracks(numTracks), _length(length), _choreId(id), _owner(owner) {
 
-	memcpy(_name, name, 32);
+	if (name != nullptr)
+		memcpy(_name, name, 32);
 	_tracks = new ChoreTrack[_numTracks];
 }
 
