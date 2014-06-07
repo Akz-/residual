@@ -303,10 +303,6 @@ void EMIModel::updateLighting(const Math::Matrix4 &matrix) {
 			if (!l->_enabled)
 				continue;
 
-			// Note: Spot lights currently unimplemented.
-			if (l->_type == Light::Spot)
-				continue;
-
 			float light = l->_intensity;
 			Math::Vector3d dir;
 
@@ -317,16 +313,29 @@ void EMIModel::updateLighting(const Math::Matrix4 &matrix) {
 			}
 
 			if (l->_type != Light::Ambient) {
-				float dot = MAX(0.0f, normal.dotProduct(dir.getNormalized()));
-				light *= dot;
-
 				if (l->_type != Light::Direct) {
 					float dist = dir.getMagnitude();
 					if (dist > l->_falloffFar)
 						continue;
 
-					float attn = MIN(1.0f, 1.0f - (dist - l->_falloffNear) / (l->_falloffFar - l->_falloffNear));
-					light *= attn;
+					if (dist > l->_falloffNear) {
+						float attn = 1.0f - (dist - l->_falloffNear) / (l->_falloffFar - l->_falloffNear);
+						light *= attn;
+					}
+				}
+
+				dir.normalize();
+				float dot = MAX(0.0f, normal.dotProduct(dir));
+				light *= dot;
+
+				if (l->_type == Light::Spot) {
+					float cosAngle = abs(l->_dir.dotProduct(dir));
+					float angle = acos(cosAngle);
+					if (angle > l->_penumbraangle)
+						continue;
+
+					if (angle > l->_umbraangle)
+						light *= 1.0f - (angle - l->_umbraangle) / (l->_penumbraangle - l->_umbraangle);
 				}
 			}
 
