@@ -274,9 +274,12 @@ void EMIModel::draw() {
 
 	Actor *actor = _costume->getActor();
 	Math::Matrix4 modelToWorld = actor->getFinalMatrix();
-	Math::AABB bounds = calculateWorldBounds(modelToWorld);
-	if (bounds.isValid() && !g_grim->getCurrSet()->getFrustum().isInside(bounds))
-		return;
+
+	if (!actor->isInOverworld()) {
+		Math::AABB bounds = calculateWorldBounds(modelToWorld);
+		if (bounds.isValid() && !g_grim->getCurrSet()->getFrustum().isInside(bounds))
+			return;
+	}
 
 	Actor::LightMode lightMode = actor->getLightMode();
 
