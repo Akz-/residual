@@ -112,6 +112,7 @@ public:
 	EMICostume *_costume;
 
 	void *_userData;
+	bool _lightingDirty;
 
 public:
 	EMIModel(const Common::String &filename, Common::SeekableReadStream *data, EMICostume *costume);
@@ -121,8 +122,8 @@ public:
 	void loadMesh(Common::SeekableReadStream *data);
 	void prepareForRender();
 	void prepareTextures();
-	void draw(const Math::Matrix4 &matrix);
-	void updateLighting(const Math::Matrix4 &matrix);
+	void draw();
+	void updateLighting(const Math::Matrix4 &modelToWorld);
 	void getBoundingBox(int *x1, int *y1, int *x2, int *y2) const;
 	Math::AABB calculateWorldBounds(const Math::Matrix4 &matrix) const;
 };

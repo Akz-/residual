@@ -770,18 +770,16 @@ void Lua_V2::SetActorLighting() {
 	int lightMode = (int)lua_getnumber(lightModeObj);
 	if (lightMode != 0) {
 		if (lightMode == 1) {
-			//FIXME actor->
-			warning("Lua_V2::SetActorLighting: case param 1(LIGHT_FASTDYN), actor: %s", actor->getName().c_str());
+			actor->setLightMode(Grim::Actor::LightFastDyn);
 		} else if (lightMode == 2) {
-			//FIXME actor->
-			warning("Lua_V2::SetActorLighting: case param 2(LIGHT_NORMDYN), actor: %s", actor->getName().c_str());
+			actor->setLightMode(Grim::Actor::LightNormDyn);
 		} else {
 			actor->setGlobalAlpha(0.0f);
 			actor->setAlphaMode(Grim::Actor::AlphaReplace);
+			actor->setLightMode(Grim::Actor::LightNone);
 		}
 	} else {
-		//FIXME actor->
-		warning("Lua_V2::SetActorLighting: case param 0(LIGHT_STATIC), actor: %s", actor->getName().c_str());
+		actor->setLightMode(Grim::Actor::LightStatic);
 	}
 }
 

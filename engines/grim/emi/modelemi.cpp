@@ -134,6 +134,9 @@ void EMIModel::loadMesh(Common::SeekableReadStream *data) {
 	_numVertices = data->readUint32LE();
 
 	_lighting = new Math::Vector3d[_numVertices];
+	for (int i = 0; i < _numVertices; i++) {
+		_lighting[i].set(1.0f, 1.0f, 1.0f);
+	}
 
 	// Vertices
 	_vertices = new Math::Vector3d[_numVertices];
@@ -266,14 +269,25 @@ void EMIModel::prepareTextures() {
 	}
 }
 
-void EMIModel::draw(const Math::Matrix4 &matrix) {
+void EMIModel::draw() {
 	prepareForRender();
 
-	Math::AABB bounds = calculateWorldBounds(matrix);
+	Actor *actor = _costume->getActor();
+	Math::Matrix4 modelToWorld = actor->getFinalMatrix();
+	Math::AABB bounds = calculateWorldBounds(modelToWorld);
 	if (bounds.isValid() && !g_grim->getCurrSet()->getFrustum().isInside(bounds))
 		return;
 
-	updateLighting(matrix);
+	Actor::LightMode lightMode = actor->getLightMode();
+
+	if (lightMode == Actor::LightFastDyn || lightMode == Actor::LightNormDyn)
+		_lightingDirty = true;
+
+	if (_lightingDirty && lightMode != Actor::LightNone) {
+		updateLighting(modelToWorld);
+		_lightingDirty = false;
+	}
+
 	// We will need to add a call to the skeleton, to get the modified vertices, but for now,
 	// I'll be happy with just static drawing
 	for (uint32 i = 0; i < _numFaces; i++) {
@@ -282,10 +296,10 @@ void EMIModel::draw(const Math::Matrix4 &matrix) {
 	}
 }
 
-void EMIModel::updateLighting(const Math::Matrix4 &matrix) {
+void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 	Set *set = g_grim->getCurrSet();
 
-	Math::Matrix4 normalMatrix = matrix;
+	Math::Matrix4 normalMatrix = modelToWorld;
 	normalMatrix.invertAffineOrthonormal();
 	normalMatrix.transpose();
 
@@ -296,7 +310,7 @@ void EMIModel::updateLighting(const Math::Matrix4 &matrix) {
 	for (int i = 0; i < _numVertices; i++) {
 		Math::Vector3d normal = _drawNormals[i];
 		Math::Vector3d vertex = _drawVertices[i];
-		matrix.transform(&vertex, true);
+		modelToWorld.transform(&vertex, true);
 		normalMatrix.transform(&normal, false);
 
 		foreach(Light *l, set->getLights()) {
@@ -402,6 +416,7 @@ EMIModel::EMIModel(const Common::String &filename, Common::SeekableReadStream *d
 	_setType = 0;
 	_boneNames = nullptr;
 	_lighting = nullptr;
+	_lightingDirty = true;
 
 	loadMesh(data);
 	g_driver->createEMIModel(this);
