@@ -308,29 +308,29 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 	}
 
 	for (int i = 0; i < _numVertices; i++) {
+		Math::Vector3d &result = _lighting[i];
 		Math::Vector3d normal = _drawNormals[i];
 		Math::Vector3d vertex = _drawVertices[i];
 		modelToWorld.transform(&vertex, true);
 		normalMatrix.transform(&normal, false);
 
+		bool hasAmbient = false;
 		foreach(Light *l, set->getLights()) {
 			if (!l->_enabled)
 				continue;
 
 			float light = l->_intensity;
-			Math::Vector3d dir;
-
-			if (l->_type == Light::Direct) {
-				dir = l->_dir;
-			} else {
-				dir = l->_pos - vertex;
-			}
-
+		
 			if (l->_type != Light::Ambient) {
+				Math::Vector3d dir = l->_dir;
+
 				if (l->_type != Light::Direct) {
+					dir = l->_pos - vertex;
 					float dist = dir.getMagnitude();
 					if (dist > l->_falloffFar)
 						continue;
+
+					dir.normalize();
 
 					if (dist > l->_falloffNear) {
 						float attn = 1.0f - (dist - l->_falloffNear) / (l->_falloffFar - l->_falloffNear);
@@ -338,7 +338,6 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 					}
 				}
 
-				dir.normalize();
 				float dot = MAX(0.0f, normal.dotProduct(dir));
 				light *= dot;
 
@@ -351,6 +350,8 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 					if (angle > l->_umbraangle)
 						light *= 1.0f - (angle - l->_umbraangle) / (l->_penumbraangle - l->_umbraangle);
 				}
+			} else {
+				hasAmbient = true;
 			}
 
 			light = MIN(1.0f, light);
@@ -360,12 +361,18 @@ void EMIModel::updateLighting(const Math::Matrix4 &modelToWorld) {
 			color.y() = l->_color.getGreen() / 255.0f;
 			color.z() = l->_color.getBlue() / 255.0f;
 
-			Math::Vector3d &result = _lighting[i];
 			result += color * light;
-			result.x() = MIN(1.0f, result.x());
-			result.y() = MIN(1.0f, result.y());
-			result.z() = MIN(1.0f, result.z());
 		}
+
+		if (!hasAmbient) {
+			// If the set does not specify an ambient light, a default ambient light is used.
+			// The effect of this is visible for example in the set gmi.
+			result += Math::Vector3d(0.5f, 0.5f, 0.5f);
+		}
+
+		result.x() = MIN(1.0f, result.x());
+		result.y() = MIN(1.0f, result.y());
+		result.z() = MIN(1.0f, result.z());
 	}
 }
 
