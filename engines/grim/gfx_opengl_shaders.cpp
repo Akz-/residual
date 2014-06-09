@@ -427,8 +427,8 @@ Math::Matrix4 GfxOpenGLS::getModelView() {
 		camPos(1, 3) = -_currentPos.y();
 		camPos(2, 3) = -_currentPos.z();
 
-		Math::Matrix4 viewProjection = invertZ * viewMatrix * camPos;
-		return viewProjection;
+		Math::Matrix4 modelView = invertZ * viewMatrix * camPos;
+		return modelView;
 	} else {
 		return _mvpMatrix;
 	}
