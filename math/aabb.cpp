@@ -62,39 +62,20 @@ void AABB::transform(const Math::Matrix4 &matrix) {
 
 	reset();
 
-	Math::Vector3d corner;
+	Math::Vector3d verts[8];
+	verts[0].set(min.x(), min.y(), min.z());
+	verts[1].set(max.x(), min.y(), min.z());
+	verts[2].set(min.x(), max.y(), min.z());
+	verts[3].set(min.x(), min.y(), max.z());
+	verts[4].set(max.x(), max.y(), min.z());
+	verts[5].set(max.x(), min.y(), max.z());
+	verts[6].set(min.x(), max.y(), max.z());
+	verts[7].set(max.x(), max.y(), max.z());
 
-	corner.set(min.x(), min.y(), min.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(max.x(), min.y(), min.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(min.x(), max.y(), min.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(min.x(), min.y(), max.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(max.x(), max.y(), min.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(max.x(), min.y(), max.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(min.x(), max.y(), max.z());
-	matrix.transform(&corner, true);
-	expand(corner);
-
-	corner.set(max.x(), max.y(), max.z());
-	matrix.transform(&corner, true);
-	expand(corner);
+	for (int i = 0; i < 8; ++i) {
+		matrix.transform(&verts[i], true);
+		expand(verts[i]);
+	}
 }
 
 }

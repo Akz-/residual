@@ -28,6 +28,7 @@
 
 namespace Math {
 
+// Axis-aligned bounding box
 class AABB {
 public:
 	AABB();
