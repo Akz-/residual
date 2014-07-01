@@ -36,6 +36,10 @@
 	#include <readline/history.h>
 #endif
 
+#ifndef gDebugLevel
+extern int gDebugLevel;
+#endif
+
 
 namespace GUI {
 
