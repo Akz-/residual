@@ -2178,7 +2178,7 @@ Math::Vector3d Actor::getWorldPos() const {
 
 Math::Quaternion Actor::getRotationQuat() const {
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		Math::Quaternion ret = Math::Quaternion::fromXYZ(_yaw, _pitch, _roll, Math::EO_ZXY);
+		Math::Quaternion ret = Math::Quaternion::fromXYZ(_roll, _yaw, _pitch, Math::EO_XZY);
 		if (_inOverworld)
 			ret = ret.inverse();
 
@@ -2194,9 +2194,9 @@ Math::Quaternion Actor::getRotationQuat() const {
 					j = cost->_emiSkel->_obj->getJointNamed("");
 				}
 				const Math::Quaternion &jointQuat = j->_finalQuat;
-				ret = ret * jointQuat * attachedQuat;
+				ret = attachedQuat * jointQuat * ret;
 			} else {
-				ret = ret * attachedQuat;
+				ret = attachedQuat * ret;
 			}
 		}
 		return ret;
@@ -2264,6 +2264,10 @@ void Actor::attachToActor(Actor *other, const char *joint) {
 	EMICostume *cost = static_cast<EMICostume *>(other->getCurrentCostume());
 	if (cost && cost->_emiSkel && cost->_emiSkel->_obj)
 		assert(cost->_emiSkel->_obj->hasJoint(jointStr));
+
+	// Find the new rotation relative to the parent actor's rotation
+	Math::Quaternion newRot = getRotationQuat() * other->getRotationQuat().inverse();
+	newRot.toXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
 
 	// Find the new position coordinates
 	// FIXME: Check this when attaching to joints
