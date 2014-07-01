@@ -2292,12 +2292,17 @@ void Actor::detach() {
 	if (!isAttached())
 		return;
 
-	// FIXME: Use last known position of attached joint
-	Math::Vector3d oldPos = getWorldPos();
+	// When we detach, we use the global position because there's no parent
+	Math::Vector3d worldPos = getWorldPos();
+	setPos(worldPos);
+
+	// Now, we need the actor's rotation in the world coordinate basis
+	Math::Quaternion newRot = getRotationQuat();
+	newRot.toXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
+
+	// Remove the attached actor
 	_attachedActor = 0;
 	_attachedJoint = "";
-	setPos(oldPos);
-	setRot(0, 0, 0);
 }
 
 void Actor::drawToCleanBuffer() {
