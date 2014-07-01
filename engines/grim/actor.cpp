@@ -2269,24 +2269,19 @@ void Actor::attachToActor(Actor *other, const char *joint) {
 	Math::Quaternion newRot = getRotationQuat() * other->getRotationQuat().inverse();
 	newRot.toXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
 
-	// Find the new position coordinates
-	// FIXME: Check this when attaching to joints
+	// Find the position coordinates relative to the actor it's being attached to
 	Math::Vector3d actor = getWorldPos();
 	Math::Vector3d attachedTo = other->getWorldPos();
+	Math::Vector3d relativePos = actor - attachedTo;
 
-	// Find the magnitude
-	Math::Vector3d diff = actor - attachedTo;
-	Math::Vector4d diff4(diff.x(), diff.y(), diff.z(), 1.0);
-
-	// Get the rotation matrix
+	Math::Vector4d relativePos4(relativePos.x(), relativePos.y(), relativePos.z(), 1.0);
 	Math::Quaternion q = other->getRotationQuat();
 	Math::Matrix4 actorRotMat = q.toMatrix();
 	actorRotMat.transpose();
-
 	// Apply the matrix to get our new coordinates
-	Math::Vector4d new_pos4 = actorRotMat * diff4;
-	Math::Vector3d new_pos(new_pos4.x(), new_pos4.y(), new_pos4.z());
-	setPos(new_pos);
+	Math::Vector4d newPos4 = actorRotMat * relativePos4;
+	Math::Vector3d newPos(newPos4.x(), newPos4.y(), newPos4.z());
+	setPos(newPos);
 
 	// Save the attachement info
 	_attachedActor = other->getId();
