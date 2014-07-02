@@ -260,7 +260,7 @@ public:
 		// Get the final quaternion
 		Math::Quaternion q = a3->getRotationQuat();
 		Math::Angle qp, qy, qr;
-		q.toXYZ(&qr, &qy, &qp, Math::EO_XZY);
+		q.getXYZ(&qr, &qy, &qp, Math::EO_XZY);
 
 		TS_ASSERT(fabs(qp.getDegrees() - mp.getDegrees()) < EP);
 		TS_ASSERT(fabs(qy.getDegrees() - my.getDegrees()) < EP);

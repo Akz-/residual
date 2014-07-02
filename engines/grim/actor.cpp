@@ -2246,7 +2246,7 @@ void Actor::attachToActor(Actor *other, const char *joint) {
 
 	// Find the new rotation relative to the parent actor's rotation
 	Math::Quaternion newRot = getRotationQuat() * other->getRotationQuat().inverse();
-	newRot.toXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
+	newRot.getXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
 
 	// Find the position coordinates relative to the actor it's being attached to
 	Math::Vector3d actor = getWorldPos();
@@ -2277,7 +2277,7 @@ void Actor::detach() {
 
 	// Now, we need the actor's rotation in the world coordinate basis
 	Math::Quaternion newRot = getRotationQuat();
-	newRot.toXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
+	newRot.getXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
 
 	// Remove the attached actor
 	_attachedActor = 0;
