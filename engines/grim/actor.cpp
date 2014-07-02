@@ -390,7 +390,7 @@ bool Actor::restoreState(SaveGame *savedState) {
 				scene = g_grim->findSet(actorSetName);
 			}
 			if (scene) {
-				addShadowPlane(secName.c_str(), scene, i);
+				addShadowPlane(secName.c_str(), scene, i, Color()); // FIXME: Save color.
 			} else {
 				warning("%s: No scene \"%s\" found, cannot restore shadow on sector \"%s\"", getName().c_str(), actorSetName.c_str(), secName.c_str());
 			}
@@ -1674,11 +1674,11 @@ void Actor::drawCostume(Costume *costume) {
 			continue;
 		g_driver->setShadow(&_shadowArray[l]);
 		g_driver->setShadowMode();
-		if (g_driver->isHardwareAccelerated())
-			g_driver->drawShadowPlanes();
 		g_driver->startActorDraw(this);
 		costume->draw();
 		g_driver->finishActorDraw();
+		if (g_driver->isHardwareAccelerated())
+			g_driver->drawShadowPlanes();
 		g_driver->clearShadowMode();
 		g_driver->setShadow(nullptr);
 	}
@@ -1698,7 +1698,7 @@ void Actor::setShadowPlane(const char *n) {
 	_shadowArray[_activeShadowSlot].name = n;
 }
 
-void Actor::addShadowPlane(const char *n, Set *scene, int shadowId) {
+void Actor::addShadowPlane(const char *n, Set *scene, int shadowId, const Color &color) {
 	assert(shadowId != -1);
 
 	// This needs to be an exact match, because with a substring search a search for sector
@@ -1710,7 +1710,7 @@ void Actor::addShadowPlane(const char *n, Set *scene, int shadowId) {
 		// behind our back. This is important when Membrillo phones Velasco to tell him
 		// Naranja is dead, because the scene changes back and forth few times and so
 		// the scenes' sectors are deleted while they are still keeped by the actors.
-		Plane p = { scene->getName(), new Sector(*sector) };
+		Plane p = { scene->getName(), new Sector(*sector), color };
 		_shadowArray[shadowId].planeList.push_back(p);
 		g_grim->flagRefreshShadowMask(true);
 	}
@@ -1743,7 +1743,7 @@ bool Actor::shouldDrawShadow(int shadowId) {
 }
 
 void Actor::addShadowPlane(const char *n) {
-	addShadowPlane(n, g_grim->getCurrSet(), _activeShadowSlot);
+	addShadowPlane(n, g_grim->getCurrSet(), _activeShadowSlot, Color());
 }
 
 void Actor::setActiveShadow(int shadowId) {
@@ -1785,6 +1785,19 @@ void Actor::clearShadowPlanes() {
 		shadow->active = false;
 		shadow->dontNegate = false;
 	}
+}
+
+void Actor::clearShadowPlane(int i) {
+	Shadow *shadow = &_shadowArray[i];
+	while (!shadow->planeList.empty()) {
+		delete shadow->planeList.back().sector;
+		shadow->planeList.pop_back();
+	}
+	delete[] shadow->shadowMask;
+	shadow->shadowMaskSize = 0;
+	shadow->shadowMask = nullptr;
+	shadow->active = false;
+	shadow->dontNegate = false;
 }
 
 void Actor::putInSet(const Common::String &set) {
@@ -2247,6 +2260,63 @@ int Actor::getEffectiveSortOrder() const {
 		return attachedActor->getEffectiveSortOrder();
 	}
 	return _haveSectorSortOrder ? _sectorSortOrder : getSortOrder();
+}
+
+void Actor::activateShadow(bool active, const char *shadowName) {
+	Set *set = g_grim->getCurrSet();
+	if (!shadowName) {
+		for (int i = 0; i < set->getShadowCount(); ++i) {
+			activateShadow(active, set->getShadow(i));
+		}
+	} else {
+		SetShadow *shadow = set->getShadowByName(shadowName);
+		if (shadow)
+			activateShadow(active, shadow);
+	}
+}
+
+void Actor::activateShadow(bool active, SetShadow *setShadow) {
+	if (active)
+		_shadowActive = true;
+
+	int shadowId = -1;
+	for (int i = 0; i < MAX_SHADOWS; i++) {
+		if (setShadow->_name.equals(_shadowArray[i].name)) {
+			shadowId = i;
+			break;
+		}
+	}
+
+	if (shadowId == -1) {
+		for (int i = 0; i < MAX_SHADOWS; i++) {
+			if (!_shadowArray[i].active) {
+				shadowId = i;
+				break;
+			}
+		}
+	}
+
+	if (shadowId == -1) {
+		warning("Out of free shadow slots");
+		return;
+	}
+
+	clearShadowPlane(shadowId);
+	setActivateShadow(shadowId, active);
+
+	if (active) {
+		setActiveShadow(shadowId);
+		setShadowPoint(setShadow->_shadowPoint);
+		setShadowPlane(setShadow->_name.c_str());
+		setShadowValid(-1); // Don't negate the normal.
+
+		for (int i = 0; i < setShadow->_numShadowPlanes; ++i) {
+			SetShadow::ShadowPlane &shadowPlane = setShadow->_shadowPlanes[i];
+			// HACK: TinyGL doesn't support shadow plane specific colors, so set a global shadow color.
+			g_driver->setShadowColor(shadowPlane._color.getRed(), shadowPlane._color.getGreen(), shadowPlane._color.getBlue());
+			addShadowPlane(shadowPlane._sectorName.c_str(), g_grim->getCurrSet(), shadowId, shadowPlane._color);
+		}
+	}
 }
 
 void Actor::attachToActor(Actor *other, const char *joint) {

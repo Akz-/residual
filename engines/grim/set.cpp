@@ -55,8 +55,8 @@ Set::Set(const Common::String &sceneName, Common::SeekableReadStream *data) :
 Set::Set() :
 		_cmaps(nullptr), _locked(false), _enableLights(false), _numSetups(0),
 		_numLights(0), _numSectors(0), _numObjectStates(0), _minVolume(0),
-		_maxVolume(0), _numCmaps(0), _currSetup(nullptr), _setups(nullptr),
-		_lights(nullptr), _sectors(nullptr) {
+		_maxVolume(0), _numCmaps(0), _numShadows(0), _currSetup(nullptr),
+		_setups(nullptr), _lights(nullptr), _sectors(nullptr), _shadows(nullptr) {
 
 }
 
@@ -176,6 +176,7 @@ void Set::loadBinary(Common::SeekableReadStream *data) {
 	_numLights = 0;
 	_lights = nullptr;
 	_sectors = nullptr;
+	_shadows = nullptr;
 
 	_minVolume = 0;
 	_maxVolume = 0;
@@ -196,6 +197,13 @@ void Set::loadBinary(Common::SeekableReadStream *data) {
 	for (int i = 0; i < _numSectors; i++) {
 		_sectors[i] = new Sector();
 		_sectors[i]->loadBinary(data);
+	}
+
+	_numShadows = data->readUint32LE();
+	_shadows = new SetShadow[_numShadows];
+
+	for (int i = 0; i < _numShadows; ++i) {
+		_shadows[i].loadBinary(data);
 	}
 }
 
@@ -548,6 +556,45 @@ bool Light::restoreState(SaveGame *savedState) {
 	_penumbraangle = savedState->readFloat();
 
 	return true;
+}
+
+void SetShadow::loadBinary(Common::SeekableReadStream *data) {
+	uint32 nameLen = data->readUint32LE();
+	char *name = new char[nameLen];
+	data->read(name, nameLen);
+	_name = Common::String(name);
+
+	//int unknown = data->readUint32LE();
+	data->skip(5); // Unknown
+
+	data->read(&_shadowPoint.x(), 4);
+	data->read(&_shadowPoint.y(), 4);
+	data->read(&_shadowPoint.z(), 4);
+
+	_numShadowPlanes = data->readSint32LE();
+	_shadowPlanes = new ShadowPlane[_numShadowPlanes];
+
+	for (int i = 0; i < _numShadowPlanes; ++i) {
+		_shadowPlanes[i].loadBinary(data);
+	}
+
+	delete[] name;
+}
+
+SetShadow::~SetShadow() {
+	delete[] _shadowPlanes;
+}
+
+void SetShadow::ShadowPlane::loadBinary(Common::SeekableReadStream *data) {
+	uint32 nameLen = data->readUint32LE();
+	char *name = new char[nameLen];
+	data->read(name, nameLen);
+	_sectorName = Common::String(name);
+	data->skip(4);
+	_color._vals[0] = (byte)data->readSint32LE();
+	_color._vals[1] = (byte)data->readSint32LE();
+	_color._vals[2] = (byte)data->readSint32LE();
+	delete[] name;
 }
 
 void Set::Setup::setupCamera() const {
@@ -926,6 +973,19 @@ void Set::moveObjectStateToFront(const ObjectState::Ptr &s) {
 void Set::moveObjectStateToBack(const ObjectState::Ptr &s) {
 	_states.remove(s);
 	_states.push_back(s);
+}
+
+SetShadow *Set::getShadow(int i) {
+	return &_shadows[i];
+}
+
+SetShadow *Set::getShadowByName(const Common::String &name) {
+	for (int i = 0; i < _numShadows; ++i) {
+		SetShadow *shadow = &_shadows[i];
+		if (shadow->_name.equalsIgnoreCase(name))
+			return shadow;
+	}
+	return nullptr;
 }
 
 } // end of namespace Grim

@@ -203,6 +203,10 @@ void Sector::loadBinary(Common::SeekableReadStream *data) {
 
 	_type = (SectorType)data->readUint32LE();
 
+	if (_name.contains("shadow")) {
+		warning("asd");
+	}
+
 	_numSortplanes = data->readUint32LE();
 	_sortplanes = new int[_numSortplanes];
 	for (int i = 0; i < _numSortplanes; ++i) {

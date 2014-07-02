@@ -39,11 +39,13 @@ class LipSync;
 class Font;
 class Set;
 class Material;
+class SetShadow;
 struct Joint;
 
 struct Plane {
 	Common::String setName;
 	Sector *sector;
+	Color color;
 };
 
 typedef Common::List<Plane> SectorListType;
@@ -477,6 +479,7 @@ public:
 	void setShadowPlane(const char *name);
 	void addShadowPlane(const char *name);
 	void clearShadowPlanes();
+	void clearShadowPlane(int i);
 	void setShadowValid(int);
 	void setActivateShadow(int, bool);
 
@@ -534,7 +537,8 @@ public:
 	void setSortOrder(const int order) { _sortOrder = order; }
 	int getEffectiveSortOrder() const;
 
-	void activateShadow(bool active) { _shadowActive = active; }
+	void activateShadow(bool active, const char *shadowName);
+	void activateShadow(bool active, SetShadow *shadow);
 
 	void restoreCleanBuffer();
 	void drawToCleanBuffer();
@@ -552,7 +556,7 @@ private:
 	void costumeMarkerCallback(int marker);
 	void collisionHandlerCallback(Actor *other) const;
 	void updateWalk();
-	void addShadowPlane(const char *n, Set *scene, int shadowId);
+	void addShadowPlane(const char *n, Set *scene, int shadowId, const Color &color);
 	bool shouldDrawShadow(int shadowId);
 	void stopTalking();
 	bool stopMumbleChore();

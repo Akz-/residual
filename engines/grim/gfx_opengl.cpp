@@ -497,6 +497,11 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 	glPushMatrix();
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
+
+	Math::Matrix4 worldRot = _currentQuat.toMatrix();
+	glMultMatrixf(worldRot.getData());
+	glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+
 	if (_currentShadowArray) {
 		// TODO find out why shadowMask at device in woods is null
 		if (!_currentShadowArray->shadowMask) {
@@ -504,11 +509,22 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			_currentShadowArray->shadowMaskSize = _screenWidth * _screenHeight;
 		}
 		Sector *shadowSector = _currentShadowArray->planeList.front().sector;
-		glEnable(GL_POLYGON_OFFSET_FILL);
+		/*glEnable(GL_POLYGON_OFFSET_FILL);
 		glDisable(GL_LIGHTING);
 		glDisable(GL_TEXTURE_2D);
 //      glColor3f(0.0f, 1.0f, 0.0f);
-		glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);
+		glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);*/
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		glDepthMask(GL_FALSE);
+		glEnable(GL_STENCIL_TEST);
+		glColor4f(1, 1, 1, 1);
+		glClearStencil(0);
+		glClear(GL_STENCIL_BUFFER_BIT);
+		glStencilFunc(GL_ALWAYS, 1, (GLuint)~0);
+		glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+		glDisable(GL_LIGHTING);
+		glDisable(GL_TEXTURE_2D);
+		glPolygonOffset(0.0, 0.0);
 		glShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
 	}
 
@@ -539,10 +555,6 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			glTranslatef(pos.x(), pos.y(), pos.z());
 			glMultMatrixf(quat.toMatrix().getData());
 		} else {
-			Math::Matrix4 worldRot = _currentQuat.toMatrix();
-			glMultMatrixf(worldRot.getData());
-			glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
-
 			Math::Matrix4 m = actor->getFinalMatrix();
 			m.transpose();
 			glMultMatrixf(m.getData());
@@ -562,7 +574,7 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 		glMultMatrixf(quat.toMatrix().getData());
 	}
 
-	if (actor->getSortOrder() >= 100) {
+	if (!_currentShadowArray && actor->getSortOrder() >= 100) {
 		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 		glDepthMask(GL_TRUE);
 	}
@@ -580,9 +592,10 @@ void GfxOpenGL::finishActorDraw() {
 	}
 	glDisable(GL_TEXTURE_2D);
 	if (_currentShadowArray) {
-		glEnable(GL_LIGHTING);
-		glColor3f(1.0f, 1.0f, 1.0f);
-		glDisable(GL_POLYGON_OFFSET_FILL);
+		//glEnable(GL_LIGHTING);
+		//glColor3f(1.0f, 1.0f, 1.0f);
+		//glDisable(GL_POLYGON_OFFSET_FILL);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	}
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		glDisable(GL_CULL_FACE);
@@ -607,29 +620,32 @@ void GfxOpenGL::drawShadowPlanes() {
 		glEnd();
 	}
 */
+	glPushMatrix();
+	Math::Matrix4 worldRot = _currentQuat.toMatrix();
+	glMultMatrixf(worldRot.getData());
+	glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);
 
-	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	glDepthMask(GL_FALSE);
-	glClearStencil(~0);
-	glClear(GL_STENCIL_BUFFER_BIT);
-
+	glDepthMask(GL_TRUE);
 	glEnable(GL_STENCIL_TEST);
-	glStencilFunc(GL_ALWAYS, 1, (GLuint)~0);
-	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+	//glDisable(GL_DEPTH_TEST);
+	glStencilFunc(GL_EQUAL, 1, (GLuint)~0);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 	glDisable(GL_LIGHTING);
 	glDisable(GL_TEXTURE_2D);
+
 	for (SectorListType::iterator i = _currentShadowArray->planeList.begin(); i != _currentShadowArray->planeList.end(); ++i) {
 		Sector *shadowSector = i->sector;
+		Color &color = i->color;
+		glColor3ub(color.getRed(), color.getGreen(), color.getBlue());
 		glBegin(GL_POLYGON);
 		for (int k = 0; k < shadowSector->getNumVertices(); k++) {
 			glVertex3f(shadowSector->getVertices()[k].x(), shadowSector->getVertices()[k].y(), shadowSector->getVertices()[k].z());
 		}
 		glEnd();
 	}
-	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-	glStencilFunc(GL_EQUAL, 1, (GLuint)~0);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+	glPopMatrix();
+	glDisable(GL_STENCIL_TEST);
 }
 
 void GfxOpenGL::setShadowMode() {
@@ -667,7 +683,7 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_LIGHTING);
-	if (face->_hasTexture)
+	if (!_currentShadowArray && face->_hasTexture)
 		glEnable(GL_TEXTURE_2D);
 	else
 		glDisable(GL_TEXTURE_2D);
@@ -676,7 +692,7 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 	glBegin(GL_TRIANGLES);
 	for (uint j = 0; j < face->_faceLength * 3; j++) {
 		int index = indices[j];
-		if (face->_hasTexture) {
+		if (!_currentShadowArray && face->_hasTexture) {
 			glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
 		}
 		
@@ -685,7 +701,9 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 		byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
 		byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
 		byte a = (int)(model->_colorMap[index].a * _alpha);
-		glColor4ub(r, g, b, a);
+
+		if (!_currentShadowArray)
+			glColor4ub(r, g, b, a);
 
 		Math::Vector3d normal = model->_normals[index];
 		Math::Vector3d vertex = model->_drawVertices[index];
@@ -699,8 +717,9 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 	glEnable(GL_ALPHA_TEST);
 	glEnable(GL_LIGHTING);
 	glDisable(GL_BLEND);
-	glDepthMask(GL_TRUE);
-	glColor3f(1.0f, 1.0f, 1.0f);
+
+	if (!_currentShadowArray)
+		glDepthMask(GL_TRUE);
 }
 
 void GfxOpenGL::drawModelFace(const Mesh *mesh, const MeshFace *face) {
@@ -1038,7 +1057,6 @@ void GfxOpenGL::createBitmap(BitmapData *bitmap) {
 }
 
 void GfxOpenGL::drawBitmap(const Bitmap *bitmap, int dx, int dy, uint32 layer) {
-
 	// The PS2 version of EMI uses a TGA for it's splash-screen
 	// avoid using the TIL-code below for that, by checking
 	// numImages here:
