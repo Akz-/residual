@@ -2113,16 +2113,19 @@ void Actor::collisionHandlerCallback(Actor *other) const {
 const Math::Matrix4 Actor::getFinalMatrix() const {
 	Math::Matrix4 m;
 
+	// Add the rotation from the actor this is attached to
 	if (isAttached()) {
 		Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
 		m = attachedActor->getFinalMatrix();
 
+		// If there are joints, we need to include their rotation as well
 		EMICostume *cost = static_cast<EMICostume *>(attachedActor->getCurrentCostume());
 		if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
 			Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
 			m = m * j->_finalMatrix;
 		}
 	} else {
+		// No rotation
 		m.setToIdentity();
 	}
 
@@ -2143,7 +2146,12 @@ const Math::Matrix4 Actor::getFinalMatrix() const {
 	// which is not used in EMI. Actor::getFinalMatrix() is only used for EMI
 	// so the additional scaling can be omitted.
 
-	Math::Matrix4 rotMat(getRoll(), getYaw(), getPitch(), Math::EO_ZYX);
+	Math::Matrix4 rotMat;
+	if (_inOverworld)
+		rotMat.buildFromXYZ(-getRoll(), -getYaw(), -getPitch(), Math::EO_XZY);
+	else
+		rotMat.buildFromXYZ(getRoll(), getYaw(), getPitch(), Math::EO_XZY);
+
 	m = m * rotMat;
 	return  m;
 }
@@ -2151,34 +2159,13 @@ const Math::Matrix4 Actor::getFinalMatrix() const {
 Math::Vector3d Actor::getWorldPos() const {
 	if (! isAttached())
 		return getPos();
-
 	return getFinalMatrix().getPosition();
 }
 
 Math::Quaternion Actor::getRotationQuat() const {
 	if (g_grim->getGameType() == GType_MONKEY4) {
-		Math::Quaternion ret = Math::Quaternion::fromXYZ(_roll, _yaw, _pitch, Math::EO_XZY);
-		if (_inOverworld)
-			ret = ret.inverse();
-
-		if (isAttached()) {
-			Actor *attachedActor = Actor::getPool().getObject(_attachedActor);
-			const Math::Quaternion &attachedQuat = attachedActor->getRotationQuat();
-
-			EMICostume *cost = static_cast<EMICostume *>(attachedActor->getCurrentCostume());
-			if (cost && cost->_emiSkel && cost->_emiSkel->_obj) {
-				Joint *j = cost->_emiSkel->_obj->getJointNamed(_attachedJoint);
-				if (!j) {
-					warning("Actor::getRotationQuat: joint \"%s\" not found", _attachedJoint.c_str());
-					j = cost->_emiSkel->_obj->getJointNamed("");
-				}
-				const Math::Quaternion &jointQuat = j->_finalQuat;
-				ret = attachedQuat * jointQuat * ret;
-			} else {
-				ret = attachedQuat * ret;
-			}
-		}
-		return ret;
+		Math::Matrix4 finalMatrix = getFinalMatrix();
+		return Math::Quaternion(finalMatrix);
 	} else {
 		return Math::Quaternion::fromXYZ(_yaw, _pitch, _roll, Math::EO_ZXY).inverse();
 	}
