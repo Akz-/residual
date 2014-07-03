@@ -2130,10 +2130,15 @@ const Math::Matrix4 Actor::getFinalMatrix() const {
 	}
 
 	Math::Vector3d pp = getPos();
-	Math::Matrix4 t;
-	t.setToIdentity();
-	t.setPosition(pp);
-	m = m * t;
+	Math::Matrix4 local;
+	local.setToIdentity();
+	local.buildFromXYZ(getRoll(), getYaw(), getPitch(), Math::EO_ZYX);
+	local.setPosition(pp);
+	m = m * local;
+
+	if (_name.contains("glow3")) {
+		warning("%f, %f, %f", local.getPosition().x(), local.getPosition().y(), local.getPosition().z());
+	}
 
 	// Scaling could be applied here as follows:
 	//
@@ -2146,13 +2151,6 @@ const Math::Matrix4 Actor::getFinalMatrix() const {
 	// which is not used in EMI. Actor::getFinalMatrix() is only used for EMI
 	// so the additional scaling can be omitted.
 
-	Math::Matrix4 rotMat;
-	if (_inOverworld)
-		rotMat.buildFromXYZ(-getRoll(), -getYaw(), -getPitch(), Math::EO_XZY);
-	else
-		rotMat.buildFromXYZ(getRoll(), getYaw(), getPitch(), Math::EO_XZY);
-
-	m = m * rotMat;
 	return  m;
 }
 
@@ -2231,23 +2229,14 @@ void Actor::attachToActor(Actor *other, const char *joint) {
 	if (cost && cost->_emiSkel && cost->_emiSkel->_obj)
 		assert(cost->_emiSkel->_obj->hasJoint(jointStr));
 
-	// Find the new rotation relative to the parent actor's rotation
-	Math::Quaternion newRot = getRotationQuat() * other->getRotationQuat().inverse();
-	newRot.getXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
+	Math::Matrix4 worldToParent = other->getFinalMatrix();
+	worldToParent.invertAffineOrthonormal();
 
-	// Find the position coordinates relative to the actor it's being attached to
-	Math::Vector3d actor = getWorldPos();
-	Math::Vector3d attachedTo = other->getWorldPos();
-	Math::Vector3d relativePos = actor - attachedTo;
+	Math::Matrix4 finalMatrix = getFinalMatrix();
+	finalMatrix = worldToParent * finalMatrix;
 
-	Math::Vector4d relativePos4(relativePos.x(), relativePos.y(), relativePos.z(), 1.0);
-	Math::Quaternion q = other->getRotationQuat();
-	Math::Matrix4 actorRotMat = q.toMatrix();
-	actorRotMat.transpose();
-	// Apply the matrix to get our new coordinates
-	Math::Vector4d newPos4 = actorRotMat * relativePos4;
-	Math::Vector3d newPos(newPos4.x(), newPos4.y(), newPos4.z());
-	setPos(newPos);
+	finalMatrix.getRotation().getXYZ(&_roll, &_yaw, &_pitch, Math::EO_ZYX);
+	setPos(finalMatrix.getPosition());
 
 	// Save the attachement info
 	_attachedActor = other->getId();
@@ -2259,12 +2248,9 @@ void Actor::detach() {
 		return;
 
 	// When we detach, we use the global position because there's no parent
-	Math::Vector3d worldPos = getWorldPos();
-	setPos(worldPos);
-
-	// Now, we need the actor's rotation in the world coordinate basis
-	Math::Quaternion newRot = getRotationQuat();
-	newRot.getXYZ(&_roll, &_yaw, &_pitch, Math::EO_XZY);
+	Math::Matrix4 finalMatrix = getFinalMatrix();
+	finalMatrix.getRotation().getXYZ(&_roll, &_yaw, &_pitch, Math::EO_ZYX);
+	setPos(finalMatrix.getPosition());
 
 	// Remove the attached actor
 	_attachedActor = 0;

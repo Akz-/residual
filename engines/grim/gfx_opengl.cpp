@@ -539,13 +539,15 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			glTranslatef(pos.x(), pos.y(), pos.z());
 			glMultMatrixf(quat.toMatrix().getData());
 		} else {
-			Math::Matrix4 worldRot = _currentQuat.toMatrix();
-			glMultMatrixf(worldRot.getData());
-			glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+			Math::Matrix4 view = _currentQuat.toMatrix();
+			view.setPosition(_currentPos);
+			view.invertAffineOrthonormal();
+			view.transpose();
+			glMultMatrixf(view.getData());
 
-			Math::Matrix4 m = actor->getFinalMatrix();
-			m.transpose();
-			glMultMatrixf(m.getData());
+			Math::Matrix4 model = actor->getFinalMatrix();
+			model.transpose();
+			glMultMatrixf(model.getData());
 		}
 	} else {
 		// Grim
