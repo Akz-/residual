@@ -1683,13 +1683,10 @@ void Actor::drawCostume(Costume *costume) {
 		g_driver->setShadow(nullptr);
 	}
 
-	bool isShadowCostume = costume->getFilename().equals("fx/dumbshadow.cos");
-	if (!isShadowCostume || (isShadowCostume && _costumeStack.size() > 1 && _shadowActive)) {
-		// normal draw actor
-		g_driver->startActorDraw(this);
-		costume->draw();
-		g_driver->finishActorDraw();
-	}
+	// normal draw actor
+	g_driver->startActorDraw(this);
+	costume->draw();
+	g_driver->finishActorDraw();
 }
 
 void Actor::setShadowPlane(const char *n) {
