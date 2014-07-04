@@ -493,6 +493,7 @@ void GfxOpenGL::getBoundingBoxPos(const EMIModel *model, int *x1, int *y1, int *
 void GfxOpenGL::startActorDraw(const Actor *actor) {
 	_currentActor = actor;
 	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_LIGHTING);
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glMatrixMode(GL_MODELVIEW);
@@ -524,7 +525,9 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 		glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 		glDisable(GL_LIGHTING);
 		glDisable(GL_TEXTURE_2D);
-		glPolygonOffset(0.0, 0.0);
+		glDisable(GL_POLYGON_OFFSET_FILL);
+		glEnable(GL_POLYGON_OFFSET_FILL);
+		glPolygonOffset(-6.0, -6.0);
 		glShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
 	}
 
@@ -596,6 +599,8 @@ void GfxOpenGL::finishActorDraw() {
 		//glColor3f(1.0f, 1.0f, 1.0f);
 		//glDisable(GL_POLYGON_OFFSET_FILL);
 		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glDepthMask(GL_TRUE);
+		glDisable(GL_STENCIL_TEST);
 	}
 	if (g_grim->getGameType() == GType_MONKEY4) {
 		glDisable(GL_CULL_FACE);
@@ -633,11 +638,13 @@ void GfxOpenGL::drawShadowPlanes() {
 	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 	glDisable(GL_LIGHTING);
 	glDisable(GL_TEXTURE_2D);
+	glEnable(GL_POLYGON_OFFSET_FILL);
 
 	for (SectorListType::iterator i = _currentShadowArray->planeList.begin(); i != _currentShadowArray->planeList.end(); ++i) {
 		Sector *shadowSector = i->sector;
 		Color &color = i->color;
-		glColor3ub(color.getRed(), color.getGreen(), color.getBlue());
+		if (g_grim->getGameType() == GType_MONKEY4)
+			glColor3ub(color.getRed(), color.getGreen(), color.getBlue());
 		glBegin(GL_POLYGON);
 		for (int k = 0; k < shadowSector->getNumVertices(); k++) {
 			glVertex3f(shadowSector->getVertices()[k].x(), shadowSector->getVertices()[k].y(), shadowSector->getVertices()[k].z());
@@ -646,6 +653,7 @@ void GfxOpenGL::drawShadowPlanes() {
 	}
 	glPopMatrix();
 	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
 }
 
 void GfxOpenGL::setShadowMode() {
@@ -692,18 +700,18 @@ void GfxOpenGL::drawEMIModelFace(const EMIModel *model, const EMIMeshFace *face)
 	glBegin(GL_TRIANGLES);
 	for (uint j = 0; j < face->_faceLength * 3; j++) {
 		int index = indices[j];
-		if (!_currentShadowArray && face->_hasTexture) {
-			glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
-		}
-		
-		Math::Vector3d lighting = model->_lighting[index];
-		byte r = (byte)(model->_colorMap[index].r * lighting.x() * dim);
-		byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
-		byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
-		byte a = (int)(model->_colorMap[index].a * _alpha);
 
-		if (!_currentShadowArray)
+		if (!_currentShadowArray) {
+			if (face->_hasTexture) {
+				glTexCoord2f(model->_texVerts[index].getX(), model->_texVerts[index].getY());
+			}
+			Math::Vector3d lighting = model->_lighting[index];
+			byte r = (byte)(model->_colorMap[index].r * lighting.x() * dim);
+			byte g = (byte)(model->_colorMap[index].g * lighting.y() * dim);
+			byte b = (byte)(model->_colorMap[index].b * lighting.z() * dim);
+			byte a = (int)(model->_colorMap[index].a * _alpha);
 			glColor4ub(r, g, b, a);
+		}
 
 		Math::Vector3d normal = model->_normals[index];
 		Math::Vector3d vertex = model->_drawVertices[index];

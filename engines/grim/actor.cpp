@@ -1727,7 +1727,12 @@ bool Actor::shouldDrawShadow(int shadowId) {
 
 	Math::Vector3d bboxPos, bboxSize;
 	getBBoxInfo(bboxPos, bboxSize);
-	Math::Vector3d centerOffset = bboxPos + bboxSize * 0.5f;
+	Math::Vector3d centerOffset;
+	if (g_grim->getGameType() == GType_GRIM) {
+		centerOffset = bboxPos + bboxSize * 0.5f;
+	} else {
+		centerOffset.set(0.0f, 0.01f, 0.0f);
+	}
 	p = getPos() + centerOffset;
 
 	bool actorSide = n.x() * p.x() + n.y() * p.y() + n.z() * p.z() + d < 0.f;
@@ -2309,7 +2314,7 @@ void Actor::activateShadow(bool active, SetShadow *setShadow) {
 
 		for (int i = 0; i < setShadow->_numShadowPlanes; ++i) {
 			SetShadow::ShadowPlane &shadowPlane = setShadow->_shadowPlanes[i];
-			// HACK: TinyGL doesn't support shadow plane specific colors, so set a global shadow color.
+			// HACK: TinyGL doesn't support shadow plane specific colors currently, so set a global shadow color.
 			g_driver->setShadowColor(shadowPlane._color.getRed(), shadowPlane._color.getGreen(), shadowPlane._color.getBlue());
 			addShadowPlane(shadowPlane._sectorName.c_str(), g_grim->getCurrSet(), shadowId, shadowPlane._color);
 		}
