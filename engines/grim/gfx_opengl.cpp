@@ -158,7 +158,8 @@ byte *GfxOpenGL::setupScreen(int screenW, int screenH, bool fullscreen) {
 	GLfloat specularReflectance[] = { 0.3f, 0.3f, 0.3f, 1.0f };
 	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specularReflectance);
 
-	glPolygonOffset(-6.0, -6.0);
+	if (g_grim->getGameType() == GType_GRIM)
+		glPolygonOffset(-6.0, -6.0);
 
 	initExtensions();
 	glGetIntegerv(GL_MAX_LIGHTS, &_maxLights);
@@ -499,9 +500,12 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 
-	Math::Matrix4 worldRot = _currentQuat.toMatrix();
-	glMultMatrixf(worldRot.getData());
-	glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	if (g_grim->getGameType() == GType_MONKEY4 && actor->isInOverworld()) {
+		// Apply the view transform.
+		Math::Matrix4 worldRot = _currentQuat.toMatrix();
+		glMultMatrixf(worldRot.getData());
+		glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
 
 	if (_currentShadowArray) {
 		// TODO find out why shadowMask at device in woods is null
@@ -510,14 +514,12 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 			_currentShadowArray->shadowMaskSize = _screenWidth * _screenHeight;
 		}
 		Sector *shadowSector = _currentShadowArray->planeList.front().sector;
-		/*glEnable(GL_POLYGON_OFFSET_FILL);
-		glDisable(GL_LIGHTING);
-		glDisable(GL_TEXTURE_2D);
-//      glColor3f(0.0f, 1.0f, 0.0f);
-		glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);*/
+
+		glShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
+
+		// Draw the shadow projection to the stencil buffer.
 		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 		glDepthMask(GL_FALSE);
-		glEnable(GL_STENCIL_TEST);
 		glColor4f(1, 1, 1, 1);
 		glClearStencil(0);
 		glClear(GL_STENCIL_BUFFER_BIT);
@@ -525,10 +527,8 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 		glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 		glDisable(GL_LIGHTING);
 		glDisable(GL_TEXTURE_2D);
-		glDisable(GL_POLYGON_OFFSET_FILL);
 		glEnable(GL_POLYGON_OFFSET_FILL);
-		glPolygonOffset(-6.0, -6.0);
-		glShadowProjection(_currentShadowArray->pos, shadowSector->getVertices()[0], shadowSector->getNormal(), _currentShadowArray->dontNegate);
+		glEnable(GL_STENCIL_TEST);
 	}
 
 	const float alpha = actor->getEffectiveAlpha();
@@ -626,14 +626,19 @@ void GfxOpenGL::drawShadowPlanes() {
 	}
 */
 	glPushMatrix();
-	Math::Matrix4 worldRot = _currentQuat.toMatrix();
-	glMultMatrixf(worldRot.getData());
-	glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+
+	if (g_grim->getGameType() == GType_MONKEY4 && _currentActor->isInOverworld()) {
+		// Apply the view transform.
+		Math::Matrix4 worldRot = _currentQuat.toMatrix();
+		glMultMatrixf(worldRot.getData());
+		glTranslatef(-_currentPos.x(), -_currentPos.y(), -_currentPos.z());
+	}
+
+	// Global shadow color.
 	glColor3ub(_shadowColorR, _shadowColorG, _shadowColorB);
 
 	glDepthMask(GL_TRUE);
 	glEnable(GL_STENCIL_TEST);
-	//glDisable(GL_DEPTH_TEST);
 	glStencilFunc(GL_EQUAL, 1, (GLuint)~0);
 	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 	glDisable(GL_LIGHTING);
@@ -643,8 +648,9 @@ void GfxOpenGL::drawShadowPlanes() {
 	for (SectorListType::iterator i = _currentShadowArray->planeList.begin(); i != _currentShadowArray->planeList.end(); ++i) {
 		Sector *shadowSector = i->sector;
 		Color &color = i->color;
-		if (g_grim->getGameType() == GType_MONKEY4)
+		if (g_grim->getGameType() == GType_MONKEY4) { // Shadow plane specific shadow colors are only used in EMI.
 			glColor3ub(color.getRed(), color.getGreen(), color.getBlue());
+		}
 		glBegin(GL_POLYGON);
 		for (int k = 0; k < shadowSector->getNumVertices(); k++) {
 			glVertex3f(shadowSector->getVertices()[k].x(), shadowSector->getVertices()[k].y(), shadowSector->getVertices()[k].z());
