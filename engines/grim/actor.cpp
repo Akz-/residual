@@ -227,6 +227,7 @@ void Actor::saveState(SaveGame *savedState) const {
 			Plane &p = *j;
 			savedState->writeString(p.setName);
 			savedState->writeString(p.sector->getName());
+			savedState->writeColor(p.color);
 		}
 
 		savedState->writeLESint32(shadow.shadowMaskSize);
@@ -386,11 +387,15 @@ bool Actor::restoreState(SaveGame *savedState) {
 		for (uint32 j = 0; j < size; ++j) {
 			Common::String actorSetName = savedState->readString();
 			Common::String secName = savedState->readString();
+			Color color;
+			if (savedState->saveMinorVersion() >= 15) {
+				color = savedState->readColor();
+			}
 			if (!scene || scene->getName() != actorSetName) {
 				scene = g_grim->findSet(actorSetName);
 			}
 			if (scene) {
-				addShadowPlane(secName.c_str(), scene, i, Color()); // FIXME: Save color.
+				addShadowPlane(secName.c_str(), scene, i, color);
 			} else {
 				warning("%s: No scene \"%s\" found, cannot restore shadow on sector \"%s\"", getName().c_str(), actorSetName.c_str(), secName.c_str());
 			}
