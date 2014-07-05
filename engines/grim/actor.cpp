@@ -1771,16 +1771,7 @@ void Actor::setShadowPoint(const Math::Vector3d &p) {
 
 void Actor::clearShadowPlanes() {
 	for (int i = 0; i < MAX_SHADOWS; i++) {
-		Shadow *shadow = &_shadowArray[i];
-		while (!shadow->planeList.empty()) {
-			delete shadow->planeList.back().sector;
-			shadow->planeList.pop_back();
-		}
-		delete[] shadow->shadowMask;
-		shadow->shadowMaskSize = 0;
-		shadow->shadowMask = nullptr;
-		shadow->active = false;
-		shadow->dontNegate = false;
+		clearShadowPlane(i);
 	}
 }
 
