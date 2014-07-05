@@ -500,7 +500,7 @@ void GfxOpenGL::startActorDraw(const Actor *actor) {
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 
-	if (g_grim->getGameType() == GType_MONKEY4 && actor->isInOverworld()) {
+	if (g_grim->getGameType() == GType_MONKEY4 && !actor->isInOverworld()) {
 		// Apply the view transform.
 		Math::Matrix4 worldRot = _currentQuat.toMatrix();
 		glMultMatrixf(worldRot.getData());
@@ -627,7 +627,7 @@ void GfxOpenGL::drawShadowPlanes() {
 */
 	glPushMatrix();
 
-	if (g_grim->getGameType() == GType_MONKEY4 && _currentActor->isInOverworld()) {
+	if (g_grim->getGameType() == GType_MONKEY4) {
 		// Apply the view transform.
 		Math::Matrix4 worldRot = _currentQuat.toMatrix();
 		glMultMatrixf(worldRot.getData());
