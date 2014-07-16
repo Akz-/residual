@@ -168,6 +168,8 @@ void MP3Stream::decodeMP3Data() {
 
 			// Synthesize PCM data
 			mad_synth_frame(&_synth, &_frame);
+			// Sum up the total playback time so far
+			mad_timer_add(&_totalTime, _frame.header.duration);
 			_posInFrame = 0;
 			break;
 		}
