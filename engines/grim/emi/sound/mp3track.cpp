@@ -96,15 +96,7 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 #else
 	parseRIFFHeader(file);
 	
-	Audio::AudioStream *loop = Audio::makeLoopingAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::YES), start, end, 0);
-	Audio::SeekableAudioStream *intro = new Audio::SubSeekableAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::NO), Audio::Timestamp(startTime), start, DisposeAfterUse::YES);
-
-	Audio::QueuingAudioStream *queueStream = Audio::makeQueuingAudioStream(intro->getRate(), intro->isStereo());
-
-	queueStream->queueAudioStream(intro);
-	queueStream->queueAudioStream(loop);
-	
-	_stream = queueStream;
+	_stream = new Audio::SubLoopingAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::YES), 0, start, end);
 	_handle = new Audio::SoundHandle();
 	return true;
 #endif
