@@ -26,6 +26,7 @@
 #include "audio/decoders/mp3.h"
 #include "engines/grim/debug.h"
 #include "engines/grim/resource.h"
+#include "engines/grim/textsplit.h"
 #include "engines/grim/emi/sound/mp3track.h"
 
 namespace Grim {
@@ -69,12 +70,41 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 		return false;
 	}
 	_soundName = soundName;
+
+	Common::String jmmName(_soundName.c_str(), _soundName.size() - 4);
+	jmmName += ".jmm";
+	Common::SeekableReadStream *jmmStream = g_resourceloader->openNewStreamFile("Textures/spago/" + jmmName);
+	float loopStart = 0.0f, loopEnd = 0.0f;
+	float startTime = 0.0f;
+	if (jmmStream) {
+		TextSplitter ts(jmmName, jmmStream);
+		while (!ts.isEof()) {
+			if (ts.checkString(".start"))
+				ts.scanString(".start %f", 1, &startTime);
+			if (ts.checkString(".jump"))
+				ts.scanString(".jump %f %f", 2, &loopEnd, &loopStart);
+			ts.nextLine();
+		}
+	}
+
+	Audio::Timestamp start(loopStart);
+	Audio::Timestamp end(loopEnd);
+
 #ifndef USE_MAD
 	warning("Cannot open %s, MP3 support not enabled", soundName.c_str());
 	return true;
 #else
 	parseRIFFHeader(file);
-	_stream = Audio::makeLoopingAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::YES), 0);
+	
+	Audio::AudioStream *loop = Audio::makeLoopingAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::YES), start, end, 0);
+	Audio::SeekableAudioStream *intro = new Audio::SubSeekableAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::NO), Audio::Timestamp(startTime), start, DisposeAfterUse::YES);
+
+	Audio::QueuingAudioStream *queueStream = Audio::makeQueuingAudioStream(intro->getRate(), intro->isStereo());
+
+	queueStream->queueAudioStream(intro);
+	queueStream->queueAudioStream(loop);
+	
+	_stream = queueStream;
 	_handle = new Audio::SoundHandle();
 	return true;
 #endif
