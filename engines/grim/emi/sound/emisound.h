@@ -45,11 +45,16 @@ struct MusicEntry {
 // from Actor, to allow for splitting that into EMI-sound and iMuse without
 // changing iMuse.
 class EMISound {
+	struct StackEntry {
+		int _state;
+		SoundTrack *_track;
+	};
+
 	SoundTrack **_channels;
 	int32 _musicChannel;
 	MusicEntry *_musicTable;
 	Common::String _musicPrefix;
-	Common::Stack<SoundTrack*> _stateStack;
+	Common::Stack<StackEntry> _stateStack;
 	Common::Mutex _mutex;
 
 	static void timerHandler(void *refConf);

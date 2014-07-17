@@ -385,11 +385,14 @@ void EMISound::selectMusicSet(int setId) {
 void EMISound::pushStateToStack() {
 	if (_musicChannel != -1 && _channels[_musicChannel]) {
 		_channels[_musicChannel]->fadeOut();
-		_stateStack.push(_channels[_musicChannel]);
+		StackEntry entry = { _curMusicState, _channels[_musicChannel] };
+		_stateStack.push(entry);
 		_channels[_musicChannel] = nullptr;
 	} else {
-		_stateStack.push(nullptr);
+		StackEntry entry = { _curMusicState, nullptr };
+		_stateStack.push(entry);
 	}
+	_curMusicState = 0;
 }
 
 void EMISound::popStateFromStack() {
@@ -401,7 +404,10 @@ void EMISound::popStateFromStack() {
 	assert(_musicChannel != -1);
 
 	//even pop state from stack if music isn't set
-	_channels[_musicChannel] = _stateStack.pop();
+	StackEntry entry = _stateStack.pop();
+	_channels[_musicChannel] = entry._track;
+	g_imuseState = entry._state;
+	_curMusicState = entry._state;
 
 	if (_channels[_musicChannel]) {
 		if (_channels[_musicChannel]->isPaused())
@@ -412,7 +418,7 @@ void EMISound::popStateFromStack() {
 
 void EMISound::flushStack() {
 	while (!_stateStack.empty()) {
-		SoundTrack *temp = _stateStack.pop();
+		SoundTrack *temp = _stateStack.pop()._track;
 		delete temp;
 	}
 }
@@ -421,7 +427,7 @@ void EMISound::callback() {
 	Common::StackLock lock(_mutex);
 
 	for (int i = 0; i < _stateStack.size(); ++i) {
-		SoundTrack *track = _stateStack[i];
+		SoundTrack *track = _stateStack[i]._track;
 		if (track == nullptr || !track->getHandle() || track->isPaused())
 			continue;
 
@@ -489,7 +495,8 @@ void EMISound::restoreState(SaveGame *savedState) {
 				error("Couldn't reopen %s", soundName.c_str());
 			}
 		}
-		_stateStack.push(track);
+		StackEntry entry = { 0, track }; // FIXME: Save and restore state number.
+		_stateStack.push(entry);
 	}
 	// Currently playing music: FIXME
 	/*uint32 hasActiveTrack = savedState->readLEUint32();
@@ -530,8 +537,8 @@ void EMISound::saveState(SaveGame *savedState) {
 	// TODO: Save actual state, instead of just the file needed.
 	// We'll need repeatable state first though.
 	for (uint32 i = 0; i < stackSize; i++) {
-		if (_stateStack[i]) {
-		    savedState->writeString(_stateStack[i]->getSoundName());
+		if (_stateStack[i]._track) {  // FIXME: Save and restore state number.
+		    savedState->writeString(_stateStack[i]._track->getSoundName());
 		} else {
 		    savedState->writeString("");
 		}
