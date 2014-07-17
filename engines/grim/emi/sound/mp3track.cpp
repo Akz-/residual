@@ -31,6 +31,68 @@
 
 namespace Grim {
 
+class EMISubLoopingAudioStream : public Audio::AudioStream {
+public:
+	EMISubLoopingAudioStream(Audio::SeekableAudioStream *stream, uint loops,
+		const Audio::Timestamp start,
+		const Audio::Timestamp loopStart,
+		const Audio::Timestamp loopEnd,
+		DisposeAfterUse::Flag disposeAfterUse = DisposeAfterUse::YES)
+		: _parent(stream, disposeAfterUse),
+		_pos(convertTimeToStreamPos(start, getRate(), isStereo())),
+		_loopStart(convertTimeToStreamPos(loopStart, getRate(), isStereo())),
+		_loopEnd(convertTimeToStreamPos(loopEnd, getRate(), isStereo())),
+		_done(false) {
+		assert(loopStart < loopEnd);
+
+		if (!_parent->seek(_pos))
+			_done = true;
+	}
+
+	int readBuffer(int16 *buffer, const int numSamples) {
+		if (_done)
+			return 0;
+
+		int framesLeft = MIN(_loopEnd.frameDiff(_pos), numSamples);
+		int framesRead = _parent->readBuffer(buffer, framesLeft);
+		_pos = _pos.addFrames(framesRead);
+
+		if (framesRead < framesLeft && _parent->endOfData()) {
+			// TODO: Proper error indication.
+			_done = true;
+			return framesRead;
+		}
+		else if (_pos == _loopEnd) {
+			if (!_parent->seek(_loopStart)) {
+				// TODO: Proper error indication.
+				_done = true;
+				return framesRead;
+			}
+
+			_pos = _loopStart;
+			framesLeft = numSamples - framesLeft;
+			return framesRead + readBuffer(buffer + framesRead, framesLeft);
+		}
+		else {
+			return framesRead;
+		}
+	}
+
+	bool endOfData() const { return _done; }
+
+	bool isStereo() const { return _parent->isStereo(); }
+	int getRate() const { return _parent->getRate(); }
+	Audio::Timestamp getPos() const { return _pos; }
+
+private:
+	Common::DisposablePtr<Audio::SeekableAudioStream> _parent;
+
+	Audio::Timestamp _pos;
+	Audio::Timestamp _loopStart, _loopEnd;
+
+	bool _done;
+};
+
 void MP3Track::parseRIFFHeader(Common::SeekableReadStream *data) {
 	uint32 tag = data->readUint32BE();
 	if (tag == MKTAG('R','I','F','F')) {
@@ -64,7 +126,7 @@ MP3Track::~MP3Track() {
 	delete _handle;
 }
 
-bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadStream *file) {
+bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadStream *file, const Audio::Timestamp *start) {
 	if (!file) {
 		Debug::debug(Debug::Sound, "Stream for %s not open", soundName.c_str());
 		return false;
@@ -75,27 +137,27 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 	jmmName += ".jmm";
 	Common::SeekableReadStream *jmmStream = g_resourceloader->openNewStreamFile("Textures/spago/" + jmmName);
 	float loopStartMs = 0.0f, loopEndMs = 0.0f;
-	float startTimeMs = 0.0f;
+	float startMs = 0.0f;
 	if (jmmStream) {
 		TextSplitter ts(jmmName, jmmStream);
 		while (!ts.isEof()) {
 			if (ts.checkString(".start"))
-				ts.scanString(".start %f", 1, &startTimeMs);
+				ts.scanString(".start %f", 1, &startMs);
 			if (ts.checkString(".jump"))
 				ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
 			ts.nextLine();
 		}
 	}
 
-	Audio::Timestamp start(startTimeMs / 1000, ((int)startTimeMs * 1000) % 1000000, 1000000);
-	Audio::Timestamp loopStart(loopStartMs / 1000, ((int)loopStartMs * 1000) % 1000000, 1000000);
-	Audio::Timestamp loopEnd(loopEndMs / 1000, ((int)loopEndMs * 1000) % 1000000, 1000000);
+	Audio::Timestamp jmmStart(startMs / 1000, ((int)startMs * 1000) % 1000000, 1000000);
+	Audio::Timestamp jmmLoopStart(loopStartMs / 1000, ((int)loopStartMs * 1000) % 1000000, 1000000);
+	Audio::Timestamp jmmLoopEnd(loopEndMs / 1000, ((int)loopEndMs * 1000) % 1000000, 1000000);
 
-	if (loopEnd <= loopStart)
+	if (start)
+		jmmStart = *start;
+
+	if (jmmLoopEnd <= jmmLoopStart)
 		warning("oops");
-
-	loopStart = loopStart - start;
-	loopEnd = loopEnd - start;
 
 #ifndef USE_MAD
 	warning("Cannot open %s, MP3 support not enabled", soundName.c_str());
@@ -104,12 +166,13 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 	parseRIFFHeader(file);
 	
 	Audio::SeekableAudioStream *mp3Stream = Audio::makeMP3Stream(file, DisposeAfterUse::YES);
-	mp3Stream = new Audio::SubSeekableAudioStream(mp3Stream, start, mp3Stream->getLength());
 
-	if (loopEnd <= loopStart)
+	if (jmmLoopEnd <= jmmLoopStart) {
 		_stream = mp3Stream;
-	else
-		_stream = new Audio::SubLoopingAudioStream(mp3Stream, 0, loopStart, loopEnd);
+		mp3Stream->seek(jmmStart);
+	} else {
+		_stream = new EMISubLoopingAudioStream(mp3Stream, 0, jmmStart, jmmLoopStart, jmmLoopEnd);
+	}
 	_handle = new Audio::SoundHandle();
 	return true;
 #endif
@@ -118,6 +181,7 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 bool MP3Track::hasLooped() {
 	if (!_stream)
 		return false;
+	// FIXME
 	Audio::LoopingAudioStream *las = static_cast<Audio::LoopingAudioStream*>(_stream);
 	return las->getCompleteIterations() > 0;
 }
@@ -127,6 +191,13 @@ bool MP3Track::isPlaying() {
 		return false;
 
 	return g_system->getMixer()->isSoundHandleActive(*_handle);
+}
+
+Audio::Timestamp MP3Track::getPos() {
+	if (!_stream)
+		return Audio::Timestamp(0);
+	EMISubLoopingAudioStream *slas = static_cast<EMISubLoopingAudioStream*>(_stream);
+	return slas->getPos();
 }
 
 } // end of namespace Grim
