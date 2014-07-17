@@ -111,6 +111,26 @@ void MP3Track::parseRIFFHeader(Common::SeekableReadStream *data) {
 	}
 }
 
+MP3Track::JMMCuePoints MP3Track::parseJMMFile(const Common::String &filename) {
+	JMMCuePoints cuePoints;
+	Common::SeekableReadStream *stream = g_resourceloader->openNewStreamFile(filename);
+	if (stream) {
+		TextSplitter ts(filename, stream);
+		float startMs = 0.0f;
+		float loopStartMs = 0.0f, loopEndMs = 0.0f;
+
+		ts.scanString(".start %f", 1, &startMs);
+		ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
+
+		// Use microsecond precision for the timestamps.
+		cuePoints._start = Audio::Timestamp(startMs / 1000, ((int)startMs * 1000) % 1000000, 1000000);
+		cuePoints._loopStart = Audio::Timestamp(loopStartMs / 1000, ((int)loopStartMs * 1000) % 1000000, 1000000);
+		cuePoints._loopEnd = Audio::Timestamp(loopEndMs / 1000, ((int)loopEndMs * 1000) % 1000000, 1000000);
+	}
+	delete stream;
+	return cuePoints;
+}
+
 MP3Track::MP3Track(Audio::Mixer::SoundType soundType) {
 	_soundType = soundType;
 	_headerSize = 0;
@@ -134,31 +154,10 @@ bool MP3Track::openSound(const Common::String &filename, const Common::String &s
 	}
 	_soundName = soundName;
 
-	Common::String jmmName(_soundName.c_str(), _soundName.size() - 4);
-	jmmName += ".jmm";
-	Common::SeekableReadStream *jmmStream = g_resourceloader->openNewStreamFile("Textures/spago/" + jmmName);
-	float loopStartMs = 0.0f, loopEndMs = 0.0f;
-	float startMs = 0.0f;
-	if (jmmStream) {
-		TextSplitter ts(jmmName, jmmStream);
-		while (!ts.isEof()) {
-			if (ts.checkString(".start"))
-				ts.scanString(".start %f", 1, &startMs);
-			if (ts.checkString(".jump"))
-				ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
-			ts.nextLine();
-		}
-	}
-
-	Audio::Timestamp jmmStart(startMs / 1000, ((int)startMs * 1000) % 1000000, 1000000);
-	Audio::Timestamp jmmLoopStart(loopStartMs / 1000, ((int)loopStartMs * 1000) % 1000000, 1000000);
-	Audio::Timestamp jmmLoopEnd(loopEndMs / 1000, ((int)loopEndMs * 1000) % 1000000, 1000000);
+	MP3Track::JMMCuePoints cuePoints = parseJMMFile(Common::String(filename.c_str(), filename.size() - 4) + ".jmm");
 
 	if (start)
-		jmmStart = *start;
-
-	if (jmmLoopEnd <= jmmLoopStart)
-		warning("oops");
+		cuePoints._start = *start;
 
 #ifndef USE_MAD
 	warning("Cannot open %s, MP3 support not enabled", soundName.c_str());
@@ -168,11 +167,11 @@ bool MP3Track::openSound(const Common::String &filename, const Common::String &s
 	
 	Audio::SeekableAudioStream *mp3Stream = Audio::makeMP3Stream(file, DisposeAfterUse::YES);
 
-	if (jmmLoopEnd <= jmmLoopStart) {
+	if (cuePoints._loopEnd <= cuePoints._loopStart) {
 		_stream = mp3Stream;
-		mp3Stream->seek(jmmStart);
+		mp3Stream->seek(cuePoints._start);
 	} else {
-		_stream = new EMISubLoopingAudioStream(mp3Stream, 0, jmmStart, jmmLoopStart, jmmLoopEnd);
+		_stream = new EMISubLoopingAudioStream(mp3Stream, 0, cuePoints._start, cuePoints._loopStart, cuePoints._loopEnd);
 	}
 	_handle = new Audio::SoundHandle();
 	return true;
