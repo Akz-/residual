@@ -423,7 +423,7 @@ void EMISound::flushStack() {
 void EMISound::callback() {
 	Common::StackLock lock(_mutex);
 
-	for (int i = 0; i < _stateStack.size(); ++i) {
+	for (uint i = 0; i < _stateStack.size(); ++i) {
 		SoundTrack *track = _stateStack[i]._track;
 		if (track == nullptr || !track->getHandle() || track->isPaused())
 			continue;
