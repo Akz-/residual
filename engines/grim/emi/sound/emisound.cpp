@@ -24,6 +24,7 @@
 
 #include "common/stream.h"
 #include "common/mutex.h"
+#include "common/timer.h"
 #include "audio/audiostream.h"
 #include "audio/decoders/raw.h"
 #include "audio/mixer.h"
@@ -45,19 +46,26 @@ namespace Grim {
 
 class SoundTrack;
 
+void EMISound::timerHandler(void *refCon) {
+	EMISound *emiSound = (EMISound *)refCon;
+	emiSound->callback();
+}
+
 EMISound::EMISound() {
 	_channels = new SoundTrack*[NUM_CHANNELS];
 	for (int i = 0; i < NUM_CHANNELS; i++) {
 		_channels[i] = nullptr;
 	}
 	_curMusicState = -1;
-	_music = nullptr;
+	_musicChannel = -1;
 	initMusicTable();
+	int _callbackFps = 20; // FIXME
+	g_system->getTimerManager()->installTimerProc(timerHandler, 1000000 / _callbackFps, this, "emiSoundCallback");
 }
 
 EMISound::~EMISound() {
+	g_system->getTimerManager()->removeTimerProc(timerHandler);
 	freeAllChannels();
-	delete _music;
 	delete[] _channels;
 	delete[] _musicTable;
 }
@@ -163,8 +171,8 @@ bool EMISound::initTrack(const Common::String &filename, SoundTrack *track, cons
 
 bool EMISound::stateHasLooped(int stateId) {
 	if (stateId == _curMusicState) {
-		if (_music) {
-			return _music->hasLooped();
+		if (_musicChannel != -1 && _channels[_musicChannel] != nullptr) {
+			return _channels[_musicChannel]->hasLooped();
 		}
 	} else {
 		warning("EMISound::stateHasLooped called for a different music state than the current one");
@@ -178,13 +186,14 @@ void EMISound::setMusicState(int stateId) {
 
 	Audio::Timestamp musicPos;
 	int prevSync = -1;
-	if (_music) {
-		if (_music->isPlaying()) {
-			musicPos = _music->getPos();
-			prevSync = _music->getSync();
+	if (_musicChannel != -1 && _channels[_musicChannel]) {
+		SoundTrack *music = _channels[_musicChannel];
+		if (music->isPlaying()) {
+			musicPos = music->getPos();
+			prevSync = music->getSync();
 		}
-		delete _music;
-		_music = nullptr;
+		music->fadeOut();
+		_musicChannel = -1;
 	}
 	if (stateId == 0)
 		return;
@@ -208,23 +217,32 @@ void EMISound::setMusicState(int stateId) {
 		sync = _musicTable[stateId]._sync;
 	}
 	_curMusicState = stateId;
-	_music = createEmptyMusicTrack();
+
+	_musicChannel = getFreeChannel();
+	assert(_musicChannel != -1);
+	SoundTrack *music = createEmptyMusicTrack();
+	_channels[_musicChannel] = music;
 
 	Audio::Timestamp *start = nullptr;
 	if (prevSync == sync)
 		start = &musicPos;
 
 	Debug::debug(Debug::Sound, "Loading music: %s", filename.c_str());
-	if (initTrack(filename, _music, start)) {
-		_music->play();
-		_music->setSync(sync);
+	if (initTrack(filename, music, start)) {
+		music->play();
+		music->setSync(sync);
+		music->setFade(0.0f);
+		music->fadeIn();
 	}
 }
 
 uint32 EMISound::getMsPos(int stateId) {
-	if (!_music || !_music->getHandle())
+	if (_musicChannel == -1)
 		return 0;
-	return g_system->getMixer()->getSoundElapsedTime(*_music->getHandle());
+	SoundTrack *music = _channels[_musicChannel];
+	if (!music || !music->getHandle())
+		return 0;
+	return g_system->getMixer()->getSoundElapsedTime(*music->getHandle());
 }
 
 MusicEntry *initMusicTableDemo(const Common::String &filename) {
@@ -361,20 +379,30 @@ void EMISound::selectMusicSet(int setId) {
 }
 
 void EMISound::pushStateToStack() {
-	if (_music)
-		_music->pause();
-	_stateStack.push(_music);
-	_music = nullptr;
+	if (_musicChannel != -1 && _channels[_musicChannel]) {
+		_channels[_musicChannel]->fadeOut();
+		_stateStack.push(_channels[_musicChannel]);
+		_channels[_musicChannel] = nullptr;
+	} else {
+		_stateStack.push(nullptr);
+	}
 }
 
 void EMISound::popStateFromStack() {
-	delete _music;
+	if (_musicChannel != -1 && _channels[_musicChannel]) {
+		_channels[_musicChannel]->fadeOut();
+	}
+
+	_musicChannel = getFreeChannel();
+	assert(_musicChannel != -1);
 
 	//even pop state from stack if music isn't set
-	_music = _stateStack.pop();
+	_channels[_musicChannel] = _stateStack.pop();
 
-	if (_music) {
-		_music->pause();
+	if (_channels[_musicChannel]) {
+		if (_channels[_musicChannel]->isPaused())
+			_channels[_musicChannel]->pause();
+		_channels[_musicChannel]->fadeIn();
 	}
 }
 
@@ -382,6 +410,56 @@ void EMISound::flushStack() {
 	while (!_stateStack.empty()) {
 		SoundTrack *temp = _stateStack.pop();
 		delete temp;
+	}
+}
+
+void EMISound::callback() {
+	Common::StackLock lock(_mutex);
+
+	for (int i = 0; i < _stateStack.size(); ++i) {
+		SoundTrack *track = _stateStack[i];
+		if (track == nullptr || !track->getHandle() || track->isPaused())
+			continue;
+
+		updateTrack(track);
+		if (track->getFadeMode() == SoundTrack::FadeOut && track->getFade() == 0.0f) {
+			track->pause();
+		} else {
+			g_system->getMixer()->setChannelVolume(*track->getHandle(), track->getVolume() * track->getFade());
+		}
+	}
+
+	for (int i = 0; i < NUM_CHANNELS; i++) {
+		SoundTrack *track = _channels[i];
+		if (track == nullptr || !track->getHandle() || track->isPaused())
+			continue;
+
+		updateTrack(track);
+		if (track->getFadeMode() == SoundTrack::FadeOut && track->getFade() == 0.0f) {
+			freeChannel(i);
+		} else {
+			g_system->getMixer()->setChannelVolume(*track->getHandle(), track->getVolume() * track->getFade());
+		}
+	}
+}
+
+void EMISound::updateTrack(SoundTrack *track) {
+	if (track->getFadeMode() != SoundTrack::FadeNone) {
+		float fadeStep = 0.5f / 20.0f;
+		float fade = track->getFade();
+		if (track->getFadeMode() == SoundTrack::FadeIn) {
+			fade += fadeStep;
+			if (fade > 1.0f)
+				fade = 1.0f;
+			track->setFade(fade);
+		}
+		else {
+			fade -= fadeStep;
+			if (fade < 0.0f)
+				fade = 0.0f;
+			track->setFade(fade);
+		}
+		g_system->getMixer()->setChannelVolume(*track->getHandle(), track->getVolume() * fade);
 	}
 }
 
@@ -409,8 +487,8 @@ void EMISound::restoreState(SaveGame *savedState) {
 		}
 		_stateStack.push(track);
 	}
-	// Currently playing music:
-	uint32 hasActiveTrack = savedState->readLEUint32();
+	// Currently playing music: FIXME
+	/*uint32 hasActiveTrack = savedState->readLEUint32();
 	if (hasActiveTrack) {
 		_music = createEmptyMusicTrack();
 		Common::String soundName = savedState->readString();
@@ -419,7 +497,7 @@ void EMISound::restoreState(SaveGame *savedState) {
 		} else {
 			error("Couldn't reopen %s", soundName.c_str());
 		}
-	}
+	}*/
 	// Channels:
 	uint32 numChannels = savedState->readLEUint32();
 	if (numChannels > NUM_CHANNELS) {
@@ -433,7 +511,7 @@ void EMISound::restoreState(SaveGame *savedState) {
 			uint32 pan = savedState->readLEUint32();
 			/*uint32 pos = */savedState->readLEUint32();
 			/*bool isPlaying = */savedState->readByte();
-			startVoice(soundName.c_str(), volume, pan);
+			startVoice(soundName.c_str(), volume, pan); // FIXME: Could be music also.
 		}
 	}
 	savedState->endSection();
@@ -454,13 +532,13 @@ void EMISound::saveState(SaveGame *savedState) {
 		    savedState->writeString("");
 		}
 	}
-	// Currently playing music:
-	if (_music) {
+	// Currently playing music: FIXME
+	/*if (_music) {
 		savedState->writeLEUint32(1);
 		savedState->writeString(_music->getSoundName());
 	} else {
 		savedState->writeLEUint32(0);
-	}
+	}*/
 	// Channels:
 	uint32 numChannels = NUM_CHANNELS;
 	savedState->writeLEUint32(numChannels);

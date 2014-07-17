@@ -46,11 +46,13 @@ struct MusicEntry {
 // changing iMuse.
 class EMISound {
 	SoundTrack **_channels;
-	SoundTrack *_music;
+	int32 _musicChannel;
 	MusicEntry *_musicTable;
 	Common::String _musicPrefix;
 	Common::Stack<SoundTrack*> _stateStack;
+	Common::Mutex _mutex;
 
+	static void timerHandler(void *refConf);
 	void removeItem(SoundTrack *item);
 	int32 getFreeChannel();
 	int32 getChannelByName(const Common::String &name);
@@ -78,6 +80,9 @@ public:
 	void pushStateToStack();
 	void popStateFromStack();
 	void flushStack();
+
+	void callback();
+	void updateTrack(SoundTrack *track);
 
 	uint32 getMsPos(int stateId);
 private:
