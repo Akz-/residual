@@ -74,21 +74,28 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 	Common::String jmmName(_soundName.c_str(), _soundName.size() - 4);
 	jmmName += ".jmm";
 	Common::SeekableReadStream *jmmStream = g_resourceloader->openNewStreamFile("Textures/spago/" + jmmName);
-	float loopStart = 0.0f, loopEnd = 0.0f;
-	float startTime = 0.0f;
+	float loopStartMs = 0.0f, loopEndMs = 0.0f;
+	float startTimeMs = 0.0f;
 	if (jmmStream) {
 		TextSplitter ts(jmmName, jmmStream);
 		while (!ts.isEof()) {
 			if (ts.checkString(".start"))
-				ts.scanString(".start %f", 1, &startTime);
+				ts.scanString(".start %f", 1, &startTimeMs);
 			if (ts.checkString(".jump"))
-				ts.scanString(".jump %f %f", 2, &loopEnd, &loopStart);
+				ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
 			ts.nextLine();
 		}
 	}
 
-	Audio::Timestamp start(loopStart);
-	Audio::Timestamp end(loopEnd);
+	Audio::Timestamp start(startTimeMs / 1000, ((int)startTimeMs * 1000) % 1000000, 1000000);
+	Audio::Timestamp loopStart(loopStartMs / 1000, ((int)loopStartMs * 1000) % 1000000, 1000000);
+	Audio::Timestamp loopEnd(loopEndMs / 1000, ((int)loopEndMs * 1000) % 1000000, 1000000);
+
+	if (loopEnd <= loopStart)
+		warning("oops");
+
+	loopStart = loopStart - start;
+	loopEnd = loopEnd - start;
 
 #ifndef USE_MAD
 	warning("Cannot open %s, MP3 support not enabled", soundName.c_str());
@@ -96,7 +103,13 @@ bool MP3Track::openSound(const Common::String &soundName, Common::SeekableReadSt
 #else
 	parseRIFFHeader(file);
 	
-	_stream = new Audio::SubLoopingAudioStream(Audio::makeMP3Stream(file, DisposeAfterUse::YES), 0, start, end);
+	Audio::SeekableAudioStream *mp3Stream = Audio::makeMP3Stream(file, DisposeAfterUse::YES);
+	mp3Stream = new Audio::SubSeekableAudioStream(mp3Stream, start, mp3Stream->getLength());
+
+	if (loopEnd <= loopStart)
+		_stream = mp3Stream;
+	else
+		_stream = new Audio::SubLoopingAudioStream(mp3Stream, 0, loopStart, loopEnd);
 	_handle = new Audio::SoundHandle();
 	return true;
 #endif
