@@ -905,8 +905,8 @@ void Lua_V2::GetActorPuckVector() {
 void Lua_V2::SetActorHeadLimits() {
 	lua_Object actorObj = lua_getparam(1);
 	lua_Object yawObj = lua_getparam(2);
-	lua_Object maxPitchObj = lua_getparam(3);
-	lua_Object minPitchObj = lua_getparam(4);
+	lua_Object minPitchObj = lua_getparam(3);
+	lua_Object maxPitchObj = lua_getparam(4);
 
 	if (!lua_isuserdata(actorObj) || lua_tag(actorObj) != MKTAG('A','C','T','R'))
 		return;
