@@ -97,6 +97,8 @@ private:
 	SoundTrack *createEmptyMusicTrack() const;
 };
 
+extern EMISound *g_emiSound;
+
 }
 
 #endif
