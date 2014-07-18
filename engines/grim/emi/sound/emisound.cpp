@@ -463,6 +463,27 @@ void EMISound::flushStack() {
 	}
 }
 
+void EMISound::pause(bool pause) {
+	Common::StackLock lock(_mutex);
+
+	for (int i = 0; i < NUM_CHANNELS; i++) {
+		SoundTrack *track = _channels[i];
+		if (track == nullptr)
+			continue;
+
+		if (pause && track->isPaused())
+			continue;
+		if (!pause && !track->isPaused())
+			continue;
+
+		// Do not pause music.
+		if (i == _musicChannel)
+			continue;
+
+		track->pause();
+	}
+}
+
 void EMISound::callback() {
 	Common::StackLock lock(_mutex);
 
