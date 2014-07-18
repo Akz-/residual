@@ -288,7 +288,7 @@ Common::Error GrimEngine::run() {
 	if (getGameType() == GType_GRIM)
 		g_imuse = new Imuse(20, demo);
 	else if (getGameType() == GType_MONKEY4)
-		g_emiSound = new EMISound();
+		g_emiSound = new EMISound(20);
 	g_sound = new SoundPlayer();
 
 	bool fullscreen = ConfMan.getBool("fullscreen");

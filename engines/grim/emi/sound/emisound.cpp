@@ -55,16 +55,16 @@ void EMISound::timerHandler(void *refCon) {
 	emiSound->callback();
 }
 
-EMISound::EMISound() {
+EMISound::EMISound(int fps) {
 	_channels = new SoundTrack*[NUM_CHANNELS];
 	for (int i = 0; i < NUM_CHANNELS; i++) {
 		_channels[i] = nullptr;
 	}
 	_curMusicState = -1;
 	_musicChannel = -1;
+	_callbackFps = fps;
 	vimaInit(imuseDestTable);
 	initMusicTable();
-	int _callbackFps = 20; // FIXME
 	g_system->getTimerManager()->installTimerProc(timerHandler, 1000000 / _callbackFps, this, "emiSoundCallback");
 }
 
@@ -457,7 +457,7 @@ void EMISound::callback() {
 
 void EMISound::updateTrack(SoundTrack *track) {
 	if (track->getFadeMode() != SoundTrack::FadeNone) {
-		float fadeStep = 0.5f / 20.0f;
+		float fadeStep = 0.5f / _callbackFps;
 		float fade = track->getFade();
 		if (track->getFadeMode() == SoundTrack::FadeIn) {
 			fade += fadeStep;

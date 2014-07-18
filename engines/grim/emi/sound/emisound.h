@@ -64,7 +64,7 @@ class EMISound {
 	void freeChannel(int32 channel);
 	void initMusicTable();
 public:
-	EMISound();
+	EMISound(int fps);
 	~EMISound();
 	bool startVoice(const char *soundName, int volume = 127, int pan = 64);
 	bool getSoundStatus(const char *soundName);
@@ -92,6 +92,7 @@ public:
 	uint32 getMsPos(int stateId);
 private:
 	int _curMusicState;
+	int _callbackFps;
 	void freeAllChannels();
 	bool initTrack(const Common::String &filename, const Common::String &soundName, SoundTrack *track, const Audio::Timestamp *start = nullptr);
 	SoundTrack *createEmptyMusicTrack() const;
