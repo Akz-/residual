@@ -42,7 +42,7 @@ public:
 		_pos(convertTimeToStreamPos(start, getRate(), isStereo())),
 		_loopStart(convertTimeToStreamPos(loopStart, getRate(), isStereo())),
 		_loopEnd(convertTimeToStreamPos(loopEnd, getRate(), isStereo())),
-		_done(false) {
+		_done(false), _hasLooped(false) {
 		assert(loopStart < loopEnd);
 
 		if (!_parent->seek(_pos))
@@ -71,6 +71,7 @@ public:
 
 			_pos = _loopStart;
 			framesLeft = numSamples - framesLeft;
+			_hasLooped = true;
 			return framesRead + readBuffer(buffer + framesRead, framesLeft);
 		}
 		else {
@@ -78,6 +79,7 @@ public:
 		}
 	}
 
+	bool hasLooped() const { return _hasLooped; }
 	bool endOfData() const { return _done; }
 
 	bool isStereo() const { return _parent->isStereo(); }
@@ -91,6 +93,7 @@ private:
 	Audio::Timestamp _loopStart, _loopEnd;
 
 	bool _done;
+	bool _hasLooped;
 };
 
 void MP3Track::parseRIFFHeader(Common::SeekableReadStream *data) {
@@ -140,6 +143,7 @@ MP3Track::MP3Track(Audio::Mixer::SoundType soundType) {
 	_bits = 0,
 	_channels = 0;
 	_endFlag = false;
+	_looping = false;
 }
 
 MP3Track::~MP3Track() {
@@ -171,8 +175,10 @@ bool MP3Track::openSound(const Common::String &filename, const Common::String &s
 	if (cuePoints._loopEnd <= cuePoints._loopStart) {
 		_stream = mp3Stream;
 		mp3Stream->seek(cuePoints._start);
+		_looping = false;
 	} else {
 		_stream = new EMISubLoopingAudioStream(mp3Stream, 0, cuePoints._start, cuePoints._loopStart, cuePoints._loopEnd);
+		_looping = true;
 	}
 	_handle = new Audio::SoundHandle();
 	return true;
@@ -180,11 +186,10 @@ bool MP3Track::openSound(const Common::String &filename, const Common::String &s
 }
 
 bool MP3Track::hasLooped() {
-	if (!_stream)
+	if (!_stream || !_looping)
 		return false;
-	// FIXME
-	Audio::LoopingAudioStream *las = static_cast<Audio::LoopingAudioStream*>(_stream);
-	return las->getCompleteIterations() > 0;
+	EMISubLoopingAudioStream *las = static_cast<EMISubLoopingAudioStream*>(_stream);
+	return las->hasLooped();
 }
 
 bool MP3Track::isPlaying() {

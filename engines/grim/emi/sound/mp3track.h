@@ -47,6 +47,7 @@ class MP3Track : public SoundTrack {
 	char _bits;
 	char _channels;
 	bool _endFlag;
+	bool _looping;
 	void parseRIFFHeader(Common::SeekableReadStream *data);
 	JMMCuePoints parseJMMFile(const Common::String& filename);
 public:
