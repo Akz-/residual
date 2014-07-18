@@ -25,6 +25,7 @@
 
 #include "common/str.h"
 #include "common/stack.h"
+#include "common/mutex.h"
 
 namespace Grim {
 
