@@ -202,8 +202,12 @@ bool MP3Track::isPlaying() {
 Audio::Timestamp MP3Track::getPos() {
 	if (!_stream)
 		return Audio::Timestamp(0);
-	EMISubLoopingAudioStream *slas = static_cast<EMISubLoopingAudioStream*>(_stream);
-	return slas->getPos();
+	if (_looping) {
+		EMISubLoopingAudioStream *slas = static_cast<EMISubLoopingAudioStream*>(_stream);
+		return slas->getPos();
+	} else {
+		return g_system->getMixer()->getSoundElapsedTime(*_handle);
+	}
 }
 
 } // end of namespace Grim
