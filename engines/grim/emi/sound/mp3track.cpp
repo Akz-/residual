@@ -120,7 +120,8 @@ MP3Track::JMMCuePoints MP3Track::parseJMMFile(const Common::String &filename) {
 		float loopStartMs = 0.0f, loopEndMs = 0.0f;
 
 		ts.scanString(".start %f", 1, &startMs);
-		ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
+		if (ts.checkString(".jump"))
+			ts.scanString(".jump %f %f", 2, &loopEndMs, &loopStartMs);
 
 		// Use microsecond precision for the timestamps.
 		cuePoints._start = Audio::Timestamp(startMs / 1000, ((int)startMs * 1000) % 1000000, 1000000);
