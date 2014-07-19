@@ -594,7 +594,7 @@ void EMISound::restoreState(SaveGame *savedState) {
 		if (savedState->saveMinorVersion() >= 18)
 			channelIsActive = savedState->readBool();
 		else
-			channelIsActive = savedState->readLESint32() != 0;
+			channelIsActive = (savedState->readLESint32() != 0);
 		if (channelIsActive) {
 			_channels[i] = restoreTrack(savedState);
 		}
