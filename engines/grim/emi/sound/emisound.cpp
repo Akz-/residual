@@ -241,12 +241,11 @@ void EMISound::setMusicState(int stateId) {
 		return;
 	}
 	Common::String soundName;
-	int sync;
+	int sync = 0;
 	if (g_grim->getGamePlatform() == Common::kPlatformPS2) {
 		Debug::debug(Debug::Sound, "PS2 doesn't have musictable yet %d ignored, just playing 1195.SCX", stateId);
 		// So, we just rig up the menu-song hardcoded for now, as a test of the SCX-code.
 		soundName = "1195.SCX";
-		sync = 0;
 	} else {
 		soundName = _musicTable[stateId]._filename;
 		sync = _musicTable[stateId]._sync;
