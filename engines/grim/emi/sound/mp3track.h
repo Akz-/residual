@@ -49,7 +49,7 @@ class MP3Track : public SoundTrack {
 	bool _endFlag;
 	bool _looping;
 	void parseRIFFHeader(Common::SeekableReadStream *data);
-	JMMCuePoints parseJMMFile(const Common::String& filename);
+	JMMCuePoints parseJMMFile(const Common::String &filename);
 public:
 	MP3Track(Audio::Mixer::SoundType soundType);
 	~MP3Track();
