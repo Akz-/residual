@@ -99,7 +99,7 @@ public:
 
 	void restoreState(SaveGame *savedState);
 	void saveState(SaveGame *savedState);
-// The stack-classes currently ignore g_imusestate completely.
+
 	void pushStateToStack();
 	void popStateFromStack();
 	void flushStack();
