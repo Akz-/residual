@@ -569,7 +569,8 @@ void SetShadow::loadBinary(Common::SeekableReadStream *data) {
 	data->read(name, nameLen);
 	_name = Common::String(name);
 
-	data->skip(5); // Unknown
+	int padding = data->readSint32LE();
+	data->skip(padding);
 
 	data->read(&_shadowPoint.x(), 4);
 	data->read(&_shadowPoint.y(), 4);
